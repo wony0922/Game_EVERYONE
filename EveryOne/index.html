@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hand Detection Demo</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- MediaPipe Hands CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+</head>
+<body>
+  <h1>손 움직임 인식 실험</h1>
+  <div class="video-container">
+    <video id="input_video" class="input-video" autoplay playsinline></video>
+    <canvas id="output_canvas" class="output-canvas"></canvas>
+    <!-- 카운트다운 오버레이 -->
+    <div id="countdown_overlay" class="countdown-overlay" style="display:none;">
+      <span id="countdown_number">5</span>
+    </div>
+  </div>
+  <div class="corner-overlay" id="corner">
+    <canvas id="corner_canvas" width="200" height="150"></canvas>
+    <div id="gesture_info" class="gesture-info">인식된 동작: -</div>
+  </div>
+
+  <!-- 학습 모드 버튼 -->
+  <button id="btn_learn" class="learn-btn">📸 학습 모드</button>
+
+  <!-- 동작 확인 모달 -->
+  <div id="learn_modal" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <h2>이 동작은 무엇인가요?</h2>
+      <canvas id="captured_canvas" class="captured-canvas" width="400" height="300"></canvas>
+      <p class="modal-detected">AI 인식 결과: <strong id="modal_detected_gesture">-</strong></p>
+      <div id="gesture_options" class="gesture-options">
+        <!-- 동적으로 버튼 생성 -->
+      </div>
+      <!-- 기타 입력 영역 -->
+      <div id="custom_gesture_input" class="custom-input" style="display:none;">
+        <input type="text" id="custom_gesture_name" placeholder="새 동작 이름을 입력하세요" />
+        <button id="btn_custom_confirm" class="btn-confirm">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
