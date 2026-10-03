@@ -1,0 +1,10 @@
+{
+  "accuracy": 0.865,
+  "history": [
+    {
+      "timestamp": "2026-10-03 10:34:03",
+      "accuracy": 0.865,
+      "reason": "YES: 5개 신규 학습 최종 반영 승인"
+    }
+  ]
+}
