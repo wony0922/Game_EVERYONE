@@ -1,6 +1,20 @@
 import pygame
+import os
+import sys
+import time
+
+# 상위 경로 모듈 검색 추가
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(CURRENT_DIR)
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
 
 from pong import run_game
+
+try:
+    from hand_controller import HandController
+except ImportError:
+    HandController = None
 
 
 # ==========================================
@@ -14,6 +28,8 @@ FPS = 60
 BACKGROUND_COLOR = (20, 20, 30)
 WHITE = (255, 255, 255)
 BLUE = (80, 180, 255)
+GREEN = (80, 255, 120)
+RED = (255, 80, 80)
 GRAY = (130, 130, 140)
 
 
@@ -36,6 +52,17 @@ def main():
     title_font = pygame.font.Font(None, 70)
     menu_font = pygame.font.Font(None, 50)
     info_font = pygame.font.Font(None, 30)
+    small_font = pygame.font.Font(None, 24)
+
+    # HandController 생성 (카메라 & 손 동작 인식)
+    hand_controller = None
+    if HandController is not None:
+        try:
+            hand_controller = HandController(cam_index=0)
+            hand_controller.start()
+            print("[메인 메뉴] HandController 시작됨")
+        except Exception as e:
+            print(f"[메인 메뉴] HandController 생성 실패: {e}")
 
     # 현재 선택된 게임
     selected_game = 0
@@ -46,6 +73,10 @@ def main():
     ]
 
     running = True
+
+    # 손 동작 메뉴 조작 쿨다운 (연속 입력 방지)
+    last_gesture_nav_time = 0
+    GESTURE_NAV_COOLDOWN = 0.6  # 초
 
     # ======================================
     # 메인 메뉴 루프
@@ -87,7 +118,7 @@ def main():
                 elif event.key == pygame.K_RETURN:
 
                     # 선택된 게임 실행
-                    games[selected_game][1]()
+                    games[selected_game][1](hand_controller)
 
         # ----------------------------------
         # 화면 그리기
@@ -128,8 +159,13 @@ def main():
         )
 
         # 조작법
+        if hand_controller is not None:
+            ctrl_label = "HAND POINT : SELECT    FIST : START    (KB OK)"
+        else:
+            ctrl_label = "LEFT / RIGHT : SELECT    ENTER : START"
+
         info = info_font.render(
-            "LEFT / RIGHT : SELECT    ENTER : START",
+            ctrl_label,
             True,
             GRAY
         )
@@ -142,6 +178,60 @@ def main():
             )
         )
 
+        # ----------------------------------
+        # 손 동작 메뉴 조작
+        # ----------------------------------
+
+        if hand_controller is not None:
+            is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
+            now = time.time()
+
+            if is_detected and now - last_gesture_nav_time > GESTURE_NAV_COOLDOWN:
+
+                # Point 제스처 + 손 위치로 좌/우 선택
+                if gesture == "Point":
+                    if hand_x < 0.35:
+                        selected_game -= 1
+                        if selected_game < 0:
+                            selected_game = len(games) - 1
+                        last_gesture_nav_time = now
+                    elif hand_x > 0.65:
+                        selected_game += 1
+                        if selected_game >= len(games):
+                            selected_game = 0
+                        last_gesture_nav_time = now
+
+                # Fist(주먹) → 선택 (Enter 대체)
+                elif gesture == "Fist":
+                    last_gesture_nav_time = now
+                    games[selected_game][1](hand_controller)
+
+            # 웹캠 미니 미리보기 (PIP)
+            preview = hand_controller.get_preview_surface()
+            if preview is not None:
+                pip_x = WIDTH - 170
+                pip_y = HEIGHT - 130
+                pygame.draw.rect(
+                    screen,
+                    BLUE,
+                    (pip_x - 2, pip_y - 2, 164, 124),
+                    2
+                )
+                screen.blit(preview, (pip_x, pip_y))
+
+            # 손 인식 상태 표시
+            if is_detected:
+                status_text = small_font.render(
+                    f"Hand: {gesture}",
+                    True, GREEN
+                )
+            else:
+                status_text = small_font.render(
+                    "Hand: Not Detected",
+                    True, RED
+                )
+            screen.blit(status_text, (10, HEIGHT - 30))
+
         # 화면 업데이트
         pygame.display.flip()
 
@@ -150,6 +240,9 @@ def main():
     # ======================================
     # 프로그램 종료
     # ======================================
+
+    if hand_controller is not None:
+        hand_controller.stop()
 
     pygame.quit()
 

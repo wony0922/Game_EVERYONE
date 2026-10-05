@@ -1,5 +1,18 @@
 import pygame
 import random
+import os
+import sys
+
+# 상위 경로 모듈 검색 추가
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(CURRENT_DIR)
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
+
+try:
+    from hand_controller import HandController
+except ImportError:
+    HandController = None
 
 
 # ==========================================
@@ -44,7 +57,16 @@ MAX_LIVES = 3
 # Pong 게임
 # ==========================================
 
-def run_game():
+def run_game(hand_controller=None):
+
+    own_controller = False
+    if hand_controller is None and HandController is not None:
+        try:
+            hand_controller = HandController(cam_index=0)
+            hand_controller.start()
+            own_controller = True
+        except Exception as e:
+            print(f"[Pong] HandController 생성 실패: {e}")
 
     # --------------------------------------
     # 화면
@@ -55,8 +77,9 @@ def run_game():
     )
 
     pygame.display.set_caption(
-        "Mini Pong"
+        "Mini Pong (Hand Motion Controlled)"
     )
+
 
 
     # --------------------------------------
@@ -255,9 +278,27 @@ def run_game():
 
 
             # --------------------------------
-            # 좌 / 우 이동
+            # 좌 / 우 이동 (손 동작 + 키보드 병행)
             # --------------------------------
 
+            # 손 동작 인식으로 패들 위치 제어
+            if hand_controller is not None:
+                is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
+
+                if is_detected:
+                    # 손 X 좌표(0.0~1.0)를 패들 위치로 변환
+                    target_x = int(hand_x * WIDTH) - PADDLE_WIDTH // 2
+
+                    # 부드러운 이동 (보간)
+                    diff = target_x - paddle.x
+                    paddle.x += int(diff * 0.3)
+
+                    # Fist(주먹) 제스처 → 방어 발동
+                    if gesture == "Fist" and not defense_active:
+                        defense_active = True
+                        defense_start_time = pygame.time.get_ticks()
+
+            # 키보드 입력 (보조/폴백)
             keys = pygame.key.get_pressed()
 
 
@@ -629,8 +670,13 @@ def run_game():
 
         else:
 
+            if hand_controller is not None:
+                ctrl_label = "HAND : MOVE    FIST : DEFENSE    (KB OK)"
+            else:
+                ctrl_label = "LEFT / RIGHT : MOVE    ENTER : DEFENSE"
+
             control_text = font.render(
-                "LEFT / RIGHT : MOVE    ENTER : DEFENSE",
+                ctrl_label,
                 True,
                 GRAY
             )
@@ -645,8 +691,36 @@ def run_game():
             )
 
 
+        # ==================================
+        # 웹캠 미니 미리보기 (PIP)
+        # ==================================
+
+        if hand_controller is not None:
+            preview = hand_controller.get_preview_surface()
+            if preview is not None:
+                # 우측 하단에 160x120 미니 화면 표시
+                pip_x = WIDTH - 170
+                pip_y = HEIGHT - 130
+                # 테두리
+                pygame.draw.rect(
+                    screen,
+                    (80, 180, 255),
+                    (pip_x - 2, pip_y - 2, 164, 124),
+                    2
+                )
+                screen.blit(preview, (pip_x, pip_y))
+
+
         # 화면 업데이트
         pygame.display.flip()
+
+
+    # ======================================
+    # HandController 정리
+    # ======================================
+
+    if own_controller and hand_controller is not None:
+        hand_controller.stop()
 
 
 # ==========================================
