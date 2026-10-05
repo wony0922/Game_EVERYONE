@@ -1,5 +1,0 @@
-{
-  "summary": "Hand detection demo HTML page using MediaPipe Hands. Shows webcam feed and detected hand landmarks, plus a corner overlay with live feed and analysis.",
-  "updatedAt": "2026-09-21T11:08:08.143070100Z",
-  "userFacing": true
-}
