@@ -17,6 +17,11 @@ try:
 except ImportError:
     HandController = None
 
+try:
+    from hand_controller import HandController
+except ImportError:
+    HandController = None
+
 
 # ==========================================
 # 기본 설정
