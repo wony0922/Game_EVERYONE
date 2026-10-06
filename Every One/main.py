@@ -10,6 +10,12 @@ if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
 
 from pong import run_game
+from doom_wave import run_game as run_doom_wave
+
+try:
+    from hand_controller import HandController
+except ImportError:
+    HandController = None
 
 try:
     from hand_controller import HandController
@@ -69,7 +75,8 @@ def main():
 
     # 현재 게임 목록
     games = [
-        ("PONG", run_game)
+        ("PONG", run_game),
+        ("DOOM WAVE", run_doom_wave),
     ]
 
     running = True
