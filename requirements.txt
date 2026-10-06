@@ -1,0 +1,7 @@
+# Python 3.14 기준 설치 목록
+# 설치: py -3.14 -m pip install -r requirements.txt
+pygame-ce      # pygame 공식판은 3.14 설치 파일이 없음. import pygame 그대로 사용
+mediapipe>=1.0
+opencv-python
+numpy
+pillow

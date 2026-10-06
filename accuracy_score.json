@@ -1,9 +1,19 @@
 {
-  "accuracy": 0.865,
+  "accuracy": 0.959,
   "history": [
     {
       "timestamp": "2026-10-03 10:34:03",
       "accuracy": 0.865,
+      "reason": "YES: 5개 신규 학습 최종 반영 승인"
+    },
+    {
+      "timestamp": "2026-10-05 18:40:28",
+      "accuracy": 0.917,
+      "reason": "YES: 5개 신규 학습 최종 반영 승인"
+    },
+    {
+      "timestamp": "2026-10-05 18:41:55",
+      "accuracy": 0.959,
       "reason": "YES: 5개 신규 학습 최종 반영 승인"
     }
   ]
