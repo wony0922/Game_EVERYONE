@@ -1,6 +1,19 @@
 import pygame
 import random
 import math
+import os
+import sys
+
+# 상위 폴더(hand_controller.py 위치)를 모듈 검색 경로에 추가 (pong.py 와 동일)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(CURRENT_DIR)
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
+
+try:
+    from hand_controller import HandController
+except ImportError:
+    HandController = None
 
 
 # ==========================================
@@ -26,6 +39,16 @@ ORANGE = (255, 150, 50)
 FOV = 70                 # 화면에 보이는 시야각(도)
 MAX_TURN = 90            # 정면 기준 좌우 최대 회전각 → 총 180도
 TURN_SPEED = 95.0        # 초당 회전 속도(도)
+
+# ------------------------------------------
+# 손동작 조작 (hand_controller)
+# ------------------------------------------
+# 손의 좌우 위치(0.0~1.0)를 시점 각도(-MAX_TURN~+MAX_TURN)에 그대로 대응시킨다.
+# 카메라 가장자리까지 손을 뻗지 않아도 끝까지 돌 수 있도록 가운데 구간만 사용한다.
+HAND_X_MIN = 0.15        # 이 위치 이하 → 왼쪽 끝
+HAND_X_MAX = 0.85        # 이 위치 이상 → 오른쪽 끝
+HAND_SMOOTH = 14.0       # 클수록 손을 빨리 따라감 (흔들림 ↔ 반응속도)
+FIST_REARM_TIME = 0.12   # 주먹을 편 상태가 이 시간 이상 유지돼야 다음 발사 가능
 
 # ------------------------------------------
 # 총
@@ -832,7 +855,17 @@ class Revolver:
 # 게임
 # ==========================================
 
-def run_game():
+def run_game(hand_controller=None):
+
+    # 메뉴에서 컨트롤러를 받지 못했으면 직접 만든다 (pong.py 와 동일)
+    own_controller = False
+    if hand_controller is None and HandController is not None:
+        try:
+            hand_controller = HandController(cam_index=0)
+            hand_controller.start()
+            own_controller = True
+        except Exception as e:
+            print(f"[Doom Wave] HandController 생성 실패: {e}")
 
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("DOOM WAVE - T CORRIDOR")
@@ -865,8 +898,32 @@ def run_game():
         state["shake"] = 0.0
         state["over"] = False
         state["result"] = ""
+        state["over_time"] = 0.0
 
     reset()
+
+    # 손동작 상태
+    hand = {
+        "detected": False,
+        "gesture": "None",
+        "fist_armed": False,     # 시작할 때 쥐고 있던 주먹으로는 바로 쏘지 않음
+        "open_time": 0.0,        # 주먹을 편 상태로 지난 시간
+    }
+
+    def hand_fist_pressed(dt):
+        """주먹을 '새로 쥔 순간'에만 True (계속 쥐고 있으면 연사되지 않음)"""
+        if hand_controller is None or not hand["detected"]:
+            return False
+        if hand["gesture"] == "Fist":
+            if hand["fist_armed"]:
+                hand["fist_armed"] = False
+                hand["open_time"] = 0.0
+                return True
+            return False
+        hand["open_time"] += dt
+        if hand["open_time"] >= FIST_REARM_TIME:
+            hand["fist_armed"] = True
+        return False
 
     def current_angle():
         return BASE_ANGLE + state["turn"]
@@ -982,18 +1039,51 @@ def run_game():
                     shoot()
 
         # ----------------------------------
+        # 손동작 읽기
+        # ----------------------------------
+
+        hand_x = 0.5
+        if hand_controller is not None:
+            detected, hand_x, _hand_y, gesture = hand_controller.get_state()
+            hand["detected"] = detected
+            hand["gesture"] = gesture if detected else "None"
+
+        fist_now = hand_fist_pressed(dt)
+
+        # ----------------------------------
         # 진행
         # ----------------------------------
+
+        prev_turn = state["turn"]
 
         if not state["over"]:
 
             state["time"] -= dt
 
             keys = pygame.key.get_pressed()
+            key_turning = keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]
             if keys[pygame.K_LEFT]:
                 state["turn"] -= TURN_SPEED * dt
             if keys[pygame.K_RIGHT]:
                 state["turn"] += TURN_SPEED * dt
+
+            # 손 위치로 시점 회전 (키보드를 누르는 동안은 키보드 우선)
+            # 주먹을 쥔 동안에는 조준을 고정 → 쥐는 동작 때문에 조준이 흔들리지 않음
+            if (
+                hand_controller is not None
+                and hand["detected"]
+                and not key_turning
+                and hand["gesture"] != "Fist"
+            ):
+                t = (hand_x - HAND_X_MIN) / (HAND_X_MAX - HAND_X_MIN)
+                t = max(0.0, min(1.0, t))
+                target_turn = (t * 2 - 1) * MAX_TURN
+                follow = 1 - math.exp(-HAND_SMOOTH * dt)
+                state["turn"] += (target_turn - state["turn"]) * follow
+
+            # 주먹 쥐기 → 발사
+            if fist_now:
+                shoot()
 
             # 시야 회전 제한 (MAX_TURN * 2 도)
             state["turn"] = max(-MAX_TURN, min(MAX_TURN, state["turn"]))
@@ -1031,16 +1121,17 @@ def run_game():
                 state["over"] = True
                 state["result"] = "SURVIVED!"
 
+        else:
+            # 게임 종료 화면: 1초 뒤부터 주먹으로 다시 시작
+            state["over_time"] += dt
+            if fist_now and state["over_time"] > 1.0:
+                reset()
+
         if state["muzzle"] > 0:
             state["muzzle"] -= dt
 
-        turning = False
-        if not state["over"]:
-            keys = pygame.key.get_pressed()
-            turning = (
-                (keys[pygame.K_LEFT] and state["turn"] > -MAX_TURN)
-                or (keys[pygame.K_RIGHT] and state["turn"] < MAX_TURN)
-            )
+        # 시점이 움직이는 중이면 총이 조금 더 흔들린다
+        turning = abs(state["turn"] - prev_turn) > 0.05
         gun.update(dt, turning)
         if state["damage_flash"] > 0:
             state["damage_flash"] -= dt
@@ -1063,7 +1154,9 @@ def run_game():
             frame.blit(fire_light, (0, 0))
         gun.draw(frame)
         draw_turn_meter(frame, state["turn"], small_font)
-        draw_hud(frame, state, font, small_font)
+        draw_hud(frame, state, font, small_font, hand_controller is not None)
+        if hand_controller is not None:
+            draw_hand_preview(frame, hand_controller, hand, small_font)
 
         if state["damage_flash"] > 0:
             overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
@@ -1086,6 +1179,10 @@ def run_game():
 
     # 메인 메뉴로 돌아갈 때 제목 복구
     pygame.display.set_caption("Every One")
+
+    # 직접 만든 컨트롤러만 정리 (메뉴에서 받은 것은 메뉴가 계속 사용)
+    if own_controller and hand_controller is not None:
+        hand_controller.stop()
 
 
 # ==========================================
@@ -1147,7 +1244,28 @@ def draw_offscreen_indicators(surf, enemies, angle):
             right_y += 30
 
 
-def draw_hud(surf, state, font, small_font):
+def draw_hand_preview(surf, hand_controller, hand, small_font):
+    """웹캠 미니 미리보기 + 손 인식 상태 (pong.py 와 같은 위치·크기)"""
+    pip_x = WIDTH - 170
+    pip_y = HEIGHT - 155
+    preview = hand_controller.get_preview_surface()
+    if preview is not None:
+        pygame.draw.rect(surf, (80, 180, 255), (pip_x - 2, pip_y - 2, 164, 124), 2)
+        surf.blit(preview, (pip_x, pip_y))
+
+    if hand["detected"]:
+        color = YELLOW if hand["gesture"] == "Fist" else GREEN
+        label = "Hand: " + hand["gesture"]
+        if hand["gesture"] == "Fist":
+            label += " (AIM LOCK)"
+    else:
+        color = RED
+        label = "Hand: Not Detected"
+    text = small_font.render(label, True, color)
+    surf.blit(text, (WIDTH - 10 - text.get_width(), pip_y - 24))
+
+
+def draw_hud(surf, state, font, small_font, hand_mode=False):
     t = state["time"]
     time_text = font.render(
         "TIME : {:05.1f}".format(max(0.0, t)), True, RED if t <= 10 else WHITE
@@ -1175,10 +1293,11 @@ def draw_hud(surf, state, font, small_font):
     )
     surf.blit(enemy_text, (WIDTH - 20 - enemy_text.get_width(), 55))
 
-    controls = small_font.render(
-        "LEFT / RIGHT : TURN    CLICK / SPACE / ENTER : FIRE    ESC : MENU",
-        True, GRAY
-    )
+    if hand_mode:
+        label = "HAND : TURN    FIST : FIRE    (KB OK)    ESC : MENU"
+    else:
+        label = "LEFT / RIGHT : TURN    CLICK / SPACE / ENTER : FIRE    ESC : MENU"
+    controls = small_font.render(label, True, GRAY)
     surf.blit(controls, (WIDTH // 2 - controls.get_width() // 2, HEIGHT - 20))
 
 
@@ -1196,7 +1315,7 @@ def draw_game_over(surf, state, font, big_font, small_font):
     )
     surf.blit(final_text, (WIDTH // 2 - final_text.get_width() // 2, HEIGHT // 2 - 20))
 
-    restart_text = font.render("ENTER : RESTART", True, GREEN)
+    restart_text = font.render("ENTER / FIST : RESTART", True, GREEN)
     surf.blit(restart_text, (WIDTH // 2 - restart_text.get_width() // 2, HEIGHT // 2 + 50))
 
     menu_text = small_font.render("ESC : MAIN MENU", True, GRAY)
