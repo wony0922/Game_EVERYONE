@@ -2,7 +2,7 @@
 title Every One - Game Launcher
 
 echo ============================================
-echo   Every One - Hand Motion Game Launcher
+echo    Every One - Hand Motion Game Launcher
 echo ============================================
 echo.
 
