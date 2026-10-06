@@ -4,5 +4,5 @@ cd /d "%~dp0"
 echo ===================================================
 echo   [Learning Mode] 학습 및 테스트 모드를 시작합니다.
 echo ===================================================
-python Learning_Mode.py
+py -3.14 Learning_Mode.py
 pause
