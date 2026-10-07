@@ -37,7 +37,7 @@ GRAY = (100, 100, 110)
 # 패들
 PADDLE_WIDTH = 120
 PADDLE_HEIGHT = 15
-PADDLE_SPEED = 7
+PADDLE_SPEED = 20
 
 
 # 공
@@ -47,6 +47,7 @@ BALL_SPEED = 5
 
 # Enter를 누른 후 방어 가능한 시간
 DEFENSE_TIME = 0.5
+DEFENSE_COOLDOWN = 1.5
 
 
 # 목숨
@@ -149,6 +150,19 @@ def run_game(hand_controller=None):
     defense_active = False
 
     defense_start_time = 0
+
+    defense_cooldown_until = 0
+
+    def activate_defense():
+        nonlocal defense_active
+        nonlocal defense_start_time
+        nonlocal defense_cooldown_until
+
+        now = pygame.time.get_ticks()
+        if not defense_active and now >= defense_cooldown_until:
+            defense_active = True
+            defense_start_time = now
+            defense_cooldown_until = now + int(DEFENSE_COOLDOWN * 1000)
 
 
     # ======================================
@@ -259,15 +273,7 @@ def run_game(hand_controller=None):
 
                     # Enter → 방어 시작
                     if event.key == pygame.K_RETURN:
-
-                        # 이미 방어 중이 아니라면
-                        if not defense_active:
-
-                            defense_active = True
-
-                            defense_start_time = (
-                                pygame.time.get_ticks()
-                            )
+                        activate_defense()
 
 
         # ==================================
@@ -287,16 +293,19 @@ def run_game(hand_controller=None):
 
                 if is_detected:
                     # 손 X 좌표(0.0~1.0)를 패들 위치로 변환
-                    target_x = int(hand_x * WIDTH) - PADDLE_WIDTH // 2
+                    sensitivity = 2.3
+                    target_x = int(
+                        WIDTH / 2 + (hand_x - 0.5) * WIDTH * sensitivity
+                        - PADDLE_WIDTH // 2
+                    )
 
                     # 부드러운 이동 (보간)
                     diff = target_x - paddle.x
-                    paddle.x += int(diff * 0.3)
+                    paddle.x += int(diff * 0.5)
 
                     # Fist(주먹) 제스처 → 방어 발동
-                    if gesture == "Fist" and not defense_active:
-                        defense_active = True
-                        defense_start_time = pygame.time.get_ticks()
+                    if gesture == "Fist":
+                        activate_defense()
 
             # 키보드 입력 (보조/폴백)
             keys = pygame.key.get_pressed()

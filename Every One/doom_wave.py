@@ -49,6 +49,7 @@ HAND_X_MIN = 0.15        # 이 위치 이하 → 왼쪽 끝
 HAND_X_MAX = 0.85        # 이 위치 이상 → 오른쪽 끝
 HAND_SMOOTH = 14.0       # 클수록 손을 빨리 따라감 (흔들림 ↔ 반응속도)
 FIST_REARM_TIME = 0.12   # 주먹을 편 상태가 이 시간 이상 유지돼야 다음 발사 가능
+GAME_OVER_HAND_COOLDOWN = 2.5
 
 # ------------------------------------------
 # 총
@@ -1043,10 +1044,19 @@ def run_game(hand_controller=None):
         # ----------------------------------
 
         hand_x = 0.5
-        if hand_controller is not None:
+        hand_input_allowed = (
+            not state["over"]
+            or state["over_time"] >= GAME_OVER_HAND_COOLDOWN
+        )
+        if hand_controller is not None and hand_input_allowed:
             detected, hand_x, _hand_y, gesture = hand_controller.get_state()
             hand["detected"] = detected
             hand["gesture"] = gesture if detected else "None"
+        elif state["over"]:
+            hand["detected"] = False
+            hand["gesture"] = "None"
+            hand["fist_armed"] = False
+            hand["open_time"] = 0.0
 
         fist_now = hand_fist_pressed(dt)
 
@@ -1122,9 +1132,9 @@ def run_game(hand_controller=None):
                 state["result"] = "SURVIVED!"
 
         else:
-            # 게임 종료 화면: 1초 뒤부터 주먹으로 다시 시작
+            # 게임 종료 후 2.5초간 손 입력을 막고, 이후 주먹으로 다시 시작
             state["over_time"] += dt
-            if fist_now and state["over_time"] > 1.0:
+            if fist_now and state["over_time"] >= GAME_OVER_HAND_COOLDOWN:
                 reset()
 
         if state["muzzle"] > 0:

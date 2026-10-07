@@ -81,11 +81,23 @@ def main():
         ("STROOP COLOR", run_stroop_game),
     ]
 
+    hand_input_block_until = 0
+    HAND_GAME_RETURN_COOLDOWN_MS = 2500
+
+    def launch_selected_game():
+        nonlocal hand_input_block_until
+        try:
+            games[selected_game][1](hand_controller)
+        finally:
+            hand_input_block_until = (
+                pygame.time.get_ticks() + HAND_GAME_RETURN_COOLDOWN_MS
+            )
+
     running = True
 
     # 손 동작 메뉴 조작 쿨다운 (연속 입력 방지)
     last_gesture_nav_time = 0
-    GESTURE_NAV_COOLDOWN = 0.6  # 초
+    GESTURE_NAV_COOLDOWN = 1  # 초
 
     # ======================================
     # 메인 메뉴 루프
@@ -127,7 +139,7 @@ def main():
                 elif event.key == pygame.K_RETURN:
 
                     # 선택된 게임 실행
-                    games[selected_game][1](hand_controller)
+                    launch_selected_game()
 
         # ----------------------------------
         # 화면 그리기
@@ -194,8 +206,17 @@ def main():
         if hand_controller is not None:
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
             now = time.time()
+            hand_input_blocked = (
+                pygame.time.get_ticks() < hand_input_block_until
+            )
+            if hand_input_blocked:
+                is_detected = False
 
-            if is_detected and now - last_gesture_nav_time > GESTURE_NAV_COOLDOWN:
+            if (
+                not hand_input_blocked
+                and is_detected
+                and now - last_gesture_nav_time > GESTURE_NAV_COOLDOWN
+            ):
 
                 # Point 제스처 + 손 위치로 좌/우 선택
                 if gesture == "Point":
@@ -213,7 +234,7 @@ def main():
                 # Fist(주먹) → 선택 (Enter 대체)
                 elif gesture == "Fist":
                     last_gesture_nav_time = now
-                    games[selected_game][1](hand_controller)
+                    launch_selected_game()
 
             # 웹캠 미니 미리보기 (PIP)
             preview = hand_controller.get_preview_surface()
