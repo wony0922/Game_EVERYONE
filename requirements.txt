@@ -5,3 +5,5 @@ mediapipe>=1.0
 opencv-python
 numpy
 pillow
+vosk
+sounddevice

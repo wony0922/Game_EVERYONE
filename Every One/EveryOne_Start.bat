@@ -32,6 +32,12 @@ if %errorlevel% neq 0 (
     py -3.14 -m pip install opencv-python
 )
 
+py -3.14 -c "import vosk, sounddevice" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [INSTALL] Installing Vosk voice recognition dependencies...
+    py -3.14 -m pip install vosk sounddevice
+)
+
 echo.
 echo [START] Launching game...
 echo.

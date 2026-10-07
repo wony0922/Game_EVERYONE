@@ -11,6 +11,7 @@ if PARENT_DIR not in sys.path:
 
 from pong import run_game
 from doom_wave import run_game as run_doom_wave
+from Stroop_Game import run_game as run_stroop_game
 
 try:
     from hand_controller import HandController
@@ -77,6 +78,7 @@ def main():
     games = [
         ("PONG", run_game),
         ("DOOM WAVE", run_doom_wave),
+        ("STROOP COLOR", run_stroop_game),
     ]
 
     running = True
