@@ -21,6 +21,11 @@ except ImportError:
 
 WIDTH = 800
 HEIGHT = 600
+CAMERA_PANEL_WIDTH = 240
+WINDOW_WIDTH = WIDTH + CAMERA_PANEL_WIDTH
+CAMERA_PREVIEW_SIZE = (160, 120)
+CAMERA_PREVIEW_X = WIDTH + (CAMERA_PANEL_WIDTH - CAMERA_PREVIEW_SIZE[0]) // 2
+CAMERA_PREVIEW_Y = 230
 FPS = 60
 
 
@@ -74,7 +79,7 @@ def run_game(hand_controller=None):
     # --------------------------------------
 
     screen = pygame.display.set_mode(
-        (WIDTH, HEIGHT)
+        (WINDOW_WIDTH, HEIGHT)
     )
 
     pygame.display.set_caption(
@@ -705,20 +710,32 @@ def run_game(hand_controller=None):
         # ==================================
 
         if hand_controller is not None:
+            panel_title = font.render("WEBCAM", True, (80, 180, 255))
+            screen.blit(
+                panel_title,
+                (
+                    WIDTH + (CAMERA_PANEL_WIDTH - panel_title.get_width()) // 2,
+                    CAMERA_PREVIEW_Y - 38,
+                ),
+            )
             preview = hand_controller.get_preview_surface()
             if preview is not None:
-                # 우측 하단에 160x120 미니 화면 표시
-                pip_x = WIDTH - 170
-                pip_y = HEIGHT - 130
-                # 테두리
                 pygame.draw.rect(
                     screen,
                     (80, 180, 255),
-                    (pip_x - 2, pip_y - 2, 164, 124),
-                    2
+                    (
+                        CAMERA_PREVIEW_X - 2,
+                        CAMERA_PREVIEW_Y - 2,
+                        CAMERA_PREVIEW_SIZE[0] + 4,
+                        CAMERA_PREVIEW_SIZE[1] + 4,
+                    ),
+                    2,
                 )
-                screen.blit(preview, (pip_x, pip_y))
-
+                preview = pygame.transform.smoothscale(
+                    preview, CAMERA_PREVIEW_SIZE
+                )
+                screen.blit(preview, (CAMERA_PREVIEW_X, CAMERA_PREVIEW_Y))
+        pygame.draw.line(screen, WHITE, (WIDTH, 0), (WIDTH, HEIGHT), 2)
 
         # 화면 업데이트
         pygame.display.flip()

@@ -30,6 +30,11 @@ except ImportError:
 
 WIDTH = 800
 HEIGHT = 600
+CAMERA_PANEL_WIDTH = 240
+WINDOW_WIDTH = WIDTH + CAMERA_PANEL_WIDTH
+CAMERA_PREVIEW_SIZE = (160, 120)
+CAMERA_PREVIEW_X = WIDTH + (CAMERA_PANEL_WIDTH - CAMERA_PREVIEW_SIZE[0]) // 2
+CAMERA_PREVIEW_Y = 230
 FPS = 60
 
 BACKGROUND_COLOR = (20, 20, 30)
@@ -50,7 +55,7 @@ def main():
     pygame.init()
 
     # 게임 창 생성
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
     pygame.display.set_caption("Every One")
 
     clock = pygame.time.Clock()
@@ -237,17 +242,31 @@ def main():
                     launch_selected_game()
 
             # 웹캠 미니 미리보기 (PIP)
+            panel_title = small_font.render("WEBCAM", True, BLUE)
+            screen.blit(
+                panel_title,
+                (
+                    WIDTH + (CAMERA_PANEL_WIDTH - panel_title.get_width()) // 2,
+                    CAMERA_PREVIEW_Y - 32,
+                ),
+            )
             preview = hand_controller.get_preview_surface()
             if preview is not None:
-                pip_x = WIDTH - 170
-                pip_y = HEIGHT - 130
                 pygame.draw.rect(
                     screen,
                     BLUE,
-                    (pip_x - 2, pip_y - 2, 164, 124),
-                    2
+                    (
+                        CAMERA_PREVIEW_X - 2,
+                        CAMERA_PREVIEW_Y - 2,
+                        CAMERA_PREVIEW_SIZE[0] + 4,
+                        CAMERA_PREVIEW_SIZE[1] + 4,
+                    ),
+                    2,
                 )
-                screen.blit(preview, (pip_x, pip_y))
+                preview = pygame.transform.smoothscale(
+                    preview, CAMERA_PREVIEW_SIZE
+                )
+                screen.blit(preview, (CAMERA_PREVIEW_X, CAMERA_PREVIEW_Y))
 
             # 손 인식 상태 표시
             if is_detected:
@@ -260,7 +279,15 @@ def main():
                     "Hand: Not Detected",
                     True, RED
                 )
-            screen.blit(status_text, (10, HEIGHT - 30))
+            screen.blit(
+                status_text,
+                (
+                    WIDTH + (CAMERA_PANEL_WIDTH - status_text.get_width()) // 2,
+                    CAMERA_PREVIEW_Y + CAMERA_PREVIEW_SIZE[1] + 14,
+                ),
+            )
+
+        pygame.draw.line(screen, WHITE, (WIDTH, 0), (WIDTH, HEIGHT), 2)
 
         # 화면 업데이트
         pygame.display.flip()
