@@ -17,8 +17,8 @@ CAMERA_PREVIEW_SIZE = (160, 120)
 CAMERA_PREVIEW_X = WIDTH + (CAMERA_PANEL_WIDTH - CAMERA_PREVIEW_SIZE[0]) // 2
 CAMERA_PREVIEW_Y = 230
 FPS = 60
-MAX_LIVES = 3
-ROUND_TIME = 5.0
+MAX_LIVES = 5
+ROUND_TIME = 1.5
 FEEDBACK_TIME = 0.8
 
 BACKGROUND_COLOR = (20, 20, 30)
@@ -152,25 +152,47 @@ class VoiceRecognizer:
             for aliases in COLOR_ALIASES.values()
             for alias in aliases
         ]
-        self._recognizer = KaldiRecognizer(
-            self._model,
-            16000,
-            json.dumps(grammar + ["[unk]"], ensure_ascii=False),
-        )
+        self._recognizer_type = KaldiRecognizer
+        self._grammar = json.dumps(grammar + ["[unk]"], ensure_ascii=False)
+        self._recognizer = KaldiRecognizer(self._model, 16000, self._grammar)
         self._audio_queue = queue.Queue(maxsize=100)
         self.results = queue.Queue()
         self.errors = queue.Queue()
         self._stop_event = threading.Event()
+        self._audio_lock = threading.Lock()
+        self._accepting_audio = threading.Event()
+        self._finish_round = threading.Event()
+        self.round_finished = threading.Event()
         self._thread = threading.Thread(target=self._listen, daemon=True)
         self._thread.start()
 
     def _audio_callback(self, indata, frames, time_info, status):
         if status:
             self.errors.put("마이크 입력 상태: {}".format(status))
-        try:
-            self._audio_queue.put_nowait(bytes(indata))
-        except queue.Full:
-            self.errors.put("음성 입력 처리가 지연되고 있습니다.")
+        with self._audio_lock:
+            if not self._accepting_audio.is_set():
+                return
+            try:
+                self._audio_queue.put_nowait(bytes(indata))
+            except queue.Full:
+                self.errors.put("음성 입력 처리가 지연되고 있습니다.")
+
+    def start_round(self):
+        self.round_finished.clear()
+        with self._audio_lock:
+            self._accepting_audio.set()
+
+    def end_round(self):
+        with self._audio_lock:
+            self._accepting_audio.clear()
+        self.round_finished.clear()
+        self._finish_round.set()
+
+    def _consume_audio(self, audio):
+        if self._recognizer.AcceptWaveform(audio):
+            transcript = json.loads(self._recognizer.Result()).get("text", "")
+            if transcript:
+                self.results.put(transcript)
 
     def _listen(self):
         try:
@@ -182,14 +204,31 @@ class VoiceRecognizer:
                 callback=self._audio_callback,
             ):
                 while not self._stop_event.is_set():
+                    if self._finish_round.is_set():
+                        while True:
+                            try:
+                                audio = self._audio_queue.get_nowait()
+                            except queue.Empty:
+                                break
+                            self._consume_audio(audio)
+
+                        transcript = json.loads(
+                            self._recognizer.FinalResult()
+                        ).get("text", "")
+                        if transcript:
+                            self.results.put(transcript)
+                        self._recognizer = self._recognizer_type(
+                            self._model, 16000, self._grammar
+                        )
+                        self._finish_round.clear()
+                        self.round_finished.set()
+                        continue
+
                     try:
                         audio = self._audio_queue.get(timeout=0.1)
                     except queue.Empty:
                         continue
-                    if self._recognizer.AcceptWaveform(audio):
-                        transcript = json.loads(self._recognizer.Result()).get("text", "")
-                        if transcript:
-                            self.results.put(transcript)
+                    self._consume_audio(audio)
         except Exception as error:
             self.errors.put(
                 "마이크를 시작할 수 없습니다: {}\n"
@@ -253,20 +292,27 @@ def run_game(hand_controller=None):
     feedback = ""
     feedback_color = WHITE
     feedback_until = 0
+    round_expired = False
+    timeout_pending = False
     round_started = pygame.time.get_ticks()
     word = ""
     ink_color = ""
 
     def next_round():
-        nonlocal word, ink_color, round_started, feedback
+        nonlocal word, ink_color, round_started, feedback, round_expired
+        nonlocal timeout_pending
         word = random.choice(color_names)
         ink_color = random.choice([name for name in color_names if name != word])
         round_started = pygame.time.get_ticks()
         feedback = ""
+        round_expired = False
+        timeout_pending = False
+        if recognizer is not None:
+            recognizer.start_round()
 
     def answer(spoken_color):
         nonlocal score, lives, game_over, feedback, feedback_color, feedback_until
-        if game_over or feedback:
+        if game_over or feedback or (round_expired and not timeout_pending):
             return
         if spoken_color == ink_color:
             score += 1
@@ -297,7 +343,12 @@ def run_game(hand_controller=None):
                         lives = MAX_LIVES
                         game_over = False
                         next_round()
-                    elif not setup_error and not game_over and not feedback:
+                    elif (
+                        not setup_error
+                        and not game_over
+                        and not feedback
+                        and not round_expired
+                    ):
                         if pygame.K_1 <= event.key <= pygame.K_6:
                             answer(color_names[event.key - pygame.K_1])
 
@@ -330,15 +381,34 @@ def run_game(hand_controller=None):
             if not setup_error and not game_over:
                 if feedback and now >= feedback_until:
                     next_round()
-                elif not feedback and now - round_started >= ROUND_TIME * 1000:
-                    lives -= 1
-                    if lives <= 0:
-                        lives = 0
-                        game_over = True
-                    else:
-                        feedback = "시간 초과!"
-                        feedback_color = YELLOW
-                        feedback_until = now + int(FEEDBACK_TIME * 1000)
+                elif (
+                    not feedback
+                    and not round_expired
+                    and now - round_started >= ROUND_TIME * 1000
+                ):
+                    round_expired = True
+                    timeout_pending = True
+                    if recognizer is not None:
+                        recognizer.end_round()
+
+                if (
+                    round_expired
+                    and timeout_pending
+                    and (
+                        recognizer is None
+                        or recognizer.round_finished.is_set()
+                    )
+                ):
+                    timeout_pending = False
+                    if not feedback and not game_over:
+                        lives -= 1
+                        if lives <= 0:
+                            lives = 0
+                            game_over = True
+                        else:
+                            feedback = "시간 초과!"
+                            feedback_color = YELLOW
+                            feedback_until = now + int(FEEDBACK_TIME * 1000)
 
             screen.fill(BACKGROUND_COLOR)
             _draw_centered(screen, title_font, "색깔 맞추기", WHITE, 42)
@@ -363,6 +433,8 @@ def run_game(hand_controller=None):
                 )
                 if feedback:
                     _draw_centered(screen, body_font, feedback, feedback_color, 365)
+                elif round_expired:
+                    _draw_centered(screen, body_font, "분석중...", WHITE, 365)
                 else:
                     remaining = max(
                         0.0,
