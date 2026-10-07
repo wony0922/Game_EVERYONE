@@ -21,6 +21,11 @@ except ImportError:
 
 WIDTH = 800
 HEIGHT = 600
+CAMERA_PANEL_WIDTH = 240
+WINDOW_WIDTH = WIDTH + CAMERA_PANEL_WIDTH
+CAMERA_PREVIEW_SIZE = (160, 120)
+CAMERA_PREVIEW_X = WIDTH + (CAMERA_PANEL_WIDTH - CAMERA_PREVIEW_SIZE[0]) // 2
+CAMERA_PREVIEW_Y = 230
 FPS = 60
 
 
@@ -37,7 +42,7 @@ GRAY = (100, 100, 110)
 # 패들
 PADDLE_WIDTH = 120
 PADDLE_HEIGHT = 15
-PADDLE_SPEED = 7
+PADDLE_SPEED = 20
 
 
 # 공
@@ -47,6 +52,7 @@ BALL_SPEED = 5
 
 # Enter를 누른 후 방어 가능한 시간
 DEFENSE_TIME = 0.5
+DEFENSE_COOLDOWN = 1.5
 
 
 # 목숨
@@ -73,7 +79,7 @@ def run_game(hand_controller=None):
     # --------------------------------------
 
     screen = pygame.display.set_mode(
-        (WIDTH, HEIGHT)
+        (WINDOW_WIDTH, HEIGHT)
     )
 
     pygame.display.set_caption(
@@ -149,6 +155,19 @@ def run_game(hand_controller=None):
     defense_active = False
 
     defense_start_time = 0
+
+    defense_cooldown_until = 0
+
+    def activate_defense():
+        nonlocal defense_active
+        nonlocal defense_start_time
+        nonlocal defense_cooldown_until
+
+        now = pygame.time.get_ticks()
+        if not defense_active and now >= defense_cooldown_until:
+            defense_active = True
+            defense_start_time = now
+            defense_cooldown_until = now + int(DEFENSE_COOLDOWN * 1000)
 
 
     # ======================================
@@ -259,15 +278,7 @@ def run_game(hand_controller=None):
 
                     # Enter → 방어 시작
                     if event.key == pygame.K_RETURN:
-
-                        # 이미 방어 중이 아니라면
-                        if not defense_active:
-
-                            defense_active = True
-
-                            defense_start_time = (
-                                pygame.time.get_ticks()
-                            )
+                        activate_defense()
 
 
         # ==================================
@@ -287,16 +298,19 @@ def run_game(hand_controller=None):
 
                 if is_detected:
                     # 손 X 좌표(0.0~1.0)를 패들 위치로 변환
-                    target_x = int(hand_x * WIDTH) - PADDLE_WIDTH // 2
+                    sensitivity = 2.3
+                    target_x = int(
+                        WIDTH / 2 + (hand_x - 0.5) * WIDTH * sensitivity
+                        - PADDLE_WIDTH // 2
+                    )
 
                     # 부드러운 이동 (보간)
                     diff = target_x - paddle.x
-                    paddle.x += int(diff * 0.3)
+                    paddle.x += int(diff * 0.5)
 
                     # Fist(주먹) 제스처 → 방어 발동
-                    if gesture == "Fist" and not defense_active:
-                        defense_active = True
-                        defense_start_time = pygame.time.get_ticks()
+                    if gesture == "Fist":
+                        activate_defense()
 
             # 키보드 입력 (보조/폴백)
             keys = pygame.key.get_pressed()
@@ -696,20 +710,32 @@ def run_game(hand_controller=None):
         # ==================================
 
         if hand_controller is not None:
+            panel_title = font.render("WEBCAM", True, (80, 180, 255))
+            screen.blit(
+                panel_title,
+                (
+                    WIDTH + (CAMERA_PANEL_WIDTH - panel_title.get_width()) // 2,
+                    CAMERA_PREVIEW_Y - 38,
+                ),
+            )
             preview = hand_controller.get_preview_surface()
             if preview is not None:
-                # 우측 하단에 160x120 미니 화면 표시
-                pip_x = WIDTH - 170
-                pip_y = HEIGHT - 130
-                # 테두리
                 pygame.draw.rect(
                     screen,
                     (80, 180, 255),
-                    (pip_x - 2, pip_y - 2, 164, 124),
-                    2
+                    (
+                        CAMERA_PREVIEW_X - 2,
+                        CAMERA_PREVIEW_Y - 2,
+                        CAMERA_PREVIEW_SIZE[0] + 4,
+                        CAMERA_PREVIEW_SIZE[1] + 4,
+                    ),
+                    2,
                 )
-                screen.blit(preview, (pip_x, pip_y))
-
+                preview = pygame.transform.smoothscale(
+                    preview, CAMERA_PREVIEW_SIZE
+                )
+                screen.blit(preview, (CAMERA_PREVIEW_X, CAMERA_PREVIEW_Y))
+        pygame.draw.line(screen, WHITE, (WIDTH, 0), (WIDTH, HEIGHT), 2)
 
         # 화면 업데이트
         pygame.display.flip()

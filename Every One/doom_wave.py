@@ -22,6 +22,11 @@ except ImportError:
 
 WIDTH = 800
 HEIGHT = 600
+CAMERA_PANEL_WIDTH = 240
+WINDOW_WIDTH = WIDTH + CAMERA_PANEL_WIDTH
+CAMERA_PREVIEW_SIZE = (160, 120)
+CAMERA_PREVIEW_X = WIDTH + (CAMERA_PANEL_WIDTH - CAMERA_PREVIEW_SIZE[0]) // 2
+CAMERA_PREVIEW_Y = 230
 FPS = 60
 
 WHITE = (255, 255, 255)
@@ -49,6 +54,7 @@ HAND_X_MIN = 0.15        # 이 위치 이하 → 왼쪽 끝
 HAND_X_MAX = 0.85        # 이 위치 이상 → 오른쪽 끝
 HAND_SMOOTH = 14.0       # 클수록 손을 빨리 따라감 (흔들림 ↔ 반응속도)
 FIST_REARM_TIME = 0.12   # 주먹을 편 상태가 이 시간 이상 유지돼야 다음 발사 가능
+GAME_OVER_HAND_COOLDOWN = 2.5
 
 # ------------------------------------------
 # 총
@@ -867,7 +873,7 @@ def run_game(hand_controller=None):
         except Exception as e:
             print(f"[Doom Wave] HandController 생성 실패: {e}")
 
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
     pygame.display.set_caption("DOOM WAVE - T CORRIDOR")
 
     clock = pygame.time.Clock()
@@ -1043,10 +1049,19 @@ def run_game(hand_controller=None):
         # ----------------------------------
 
         hand_x = 0.5
-        if hand_controller is not None:
+        hand_input_allowed = (
+            not state["over"]
+            or state["over_time"] >= GAME_OVER_HAND_COOLDOWN
+        )
+        if hand_controller is not None and hand_input_allowed:
             detected, hand_x, _hand_y, gesture = hand_controller.get_state()
             hand["detected"] = detected
             hand["gesture"] = gesture if detected else "None"
+        elif state["over"]:
+            hand["detected"] = False
+            hand["gesture"] = "None"
+            hand["fist_armed"] = False
+            hand["open_time"] = 0.0
 
         fist_now = hand_fist_pressed(dt)
 
@@ -1122,9 +1137,9 @@ def run_game(hand_controller=None):
                 state["result"] = "SURVIVED!"
 
         else:
-            # 게임 종료 화면: 1초 뒤부터 주먹으로 다시 시작
+            # 게임 종료 후 2.5초간 손 입력을 막고, 이후 주먹으로 다시 시작
             state["over_time"] += dt
-            if fist_now and state["over_time"] > 1.0:
+            if fist_now and state["over_time"] >= GAME_OVER_HAND_COOLDOWN:
                 reset()
 
         if state["muzzle"] > 0:
@@ -1155,9 +1170,6 @@ def run_game(hand_controller=None):
         gun.draw(frame)
         draw_turn_meter(frame, state["turn"], small_font)
         draw_hud(frame, state, font, small_font, hand_controller is not None)
-        if hand_controller is not None:
-            draw_hand_preview(frame, hand_controller, hand, small_font)
-
         if state["damage_flash"] > 0:
             overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             alpha = int(150 * state["damage_flash"] / 0.35)
@@ -1174,6 +1186,9 @@ def run_game(hand_controller=None):
             oy = random.randint(-8, 8)
         screen.fill((0, 0, 0))
         screen.blit(frame, (ox, oy))
+        pygame.draw.line(screen, WHITE, (WIDTH, 0), (WIDTH, HEIGHT), 2)
+        if hand_controller is not None:
+            draw_hand_preview(screen, hand_controller, hand, small_font)
 
         pygame.display.flip()
 
@@ -1245,13 +1260,30 @@ def draw_offscreen_indicators(surf, enemies, angle):
 
 
 def draw_hand_preview(surf, hand_controller, hand, small_font):
-    """웹캠 미니 미리보기 + 손 인식 상태 (pong.py 와 같은 위치·크기)"""
-    pip_x = WIDTH - 170
-    pip_y = HEIGHT - 155
+    """게임 영역 바깥 오른쪽 패널에 웹캠 미리보기와 인식 상태 표시."""
+    panel_title = small_font.render("WEBCAM", True, (80, 180, 255))
+    surf.blit(
+        panel_title,
+        (
+            WIDTH + (CAMERA_PANEL_WIDTH - panel_title.get_width()) // 2,
+            CAMERA_PREVIEW_Y - 32,
+        ),
+    )
     preview = hand_controller.get_preview_surface()
     if preview is not None:
-        pygame.draw.rect(surf, (80, 180, 255), (pip_x - 2, pip_y - 2, 164, 124), 2)
-        surf.blit(preview, (pip_x, pip_y))
+        pygame.draw.rect(
+            surf,
+            (80, 180, 255),
+            (
+                CAMERA_PREVIEW_X - 2,
+                CAMERA_PREVIEW_Y - 2,
+                CAMERA_PREVIEW_SIZE[0] + 4,
+                CAMERA_PREVIEW_SIZE[1] + 4,
+            ),
+            2,
+        )
+        preview = pygame.transform.smoothscale(preview, CAMERA_PREVIEW_SIZE)
+        surf.blit(preview, (CAMERA_PREVIEW_X, CAMERA_PREVIEW_Y))
 
     if hand["detected"]:
         color = YELLOW if hand["gesture"] == "Fist" else GREEN
@@ -1262,7 +1294,13 @@ def draw_hand_preview(surf, hand_controller, hand, small_font):
         color = RED
         label = "Hand: Not Detected"
     text = small_font.render(label, True, color)
-    surf.blit(text, (WIDTH - 10 - text.get_width(), pip_y - 24))
+    surf.blit(
+        text,
+        (
+            WIDTH + (CAMERA_PANEL_WIDTH - text.get_width()) // 2,
+            CAMERA_PREVIEW_Y + CAMERA_PREVIEW_SIZE[1] + 14,
+        ),
+    )
 
 
 def draw_hud(surf, state, font, small_font, hand_mode=False):

@@ -30,6 +30,11 @@ except ImportError:
 
 WIDTH = 800
 HEIGHT = 600
+CAMERA_PANEL_WIDTH = 240
+WINDOW_WIDTH = WIDTH + CAMERA_PANEL_WIDTH
+CAMERA_PREVIEW_SIZE = (160, 120)
+CAMERA_PREVIEW_X = WIDTH + (CAMERA_PANEL_WIDTH - CAMERA_PREVIEW_SIZE[0]) // 2
+CAMERA_PREVIEW_Y = 230
 FPS = 60
 
 BACKGROUND_COLOR = (20, 20, 30)
@@ -50,7 +55,7 @@ def main():
     pygame.init()
 
     # 게임 창 생성
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
     pygame.display.set_caption("Every One")
 
     clock = pygame.time.Clock()
@@ -81,11 +86,23 @@ def main():
         ("STROOP COLOR", run_stroop_game),
     ]
 
+    hand_input_block_until = 0
+    HAND_GAME_RETURN_COOLDOWN_MS = 2500
+
+    def launch_selected_game():
+        nonlocal hand_input_block_until
+        try:
+            games[selected_game][1](hand_controller)
+        finally:
+            hand_input_block_until = (
+                pygame.time.get_ticks() + HAND_GAME_RETURN_COOLDOWN_MS
+            )
+
     running = True
 
     # 손 동작 메뉴 조작 쿨다운 (연속 입력 방지)
     last_gesture_nav_time = 0
-    GESTURE_NAV_COOLDOWN = 0.6  # 초
+    GESTURE_NAV_COOLDOWN = 1  # 초
 
     # ======================================
     # 메인 메뉴 루프
@@ -127,7 +144,7 @@ def main():
                 elif event.key == pygame.K_RETURN:
 
                     # 선택된 게임 실행
-                    games[selected_game][1](hand_controller)
+                    launch_selected_game()
 
         # ----------------------------------
         # 화면 그리기
@@ -194,8 +211,17 @@ def main():
         if hand_controller is not None:
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
             now = time.time()
+            hand_input_blocked = (
+                pygame.time.get_ticks() < hand_input_block_until
+            )
+            if hand_input_blocked:
+                is_detected = False
 
-            if is_detected and now - last_gesture_nav_time > GESTURE_NAV_COOLDOWN:
+            if (
+                not hand_input_blocked
+                and is_detected
+                and now - last_gesture_nav_time > GESTURE_NAV_COOLDOWN
+            ):
 
                 # Point 제스처 + 손 위치로 좌/우 선택
                 if gesture == "Point":
@@ -213,20 +239,34 @@ def main():
                 # Fist(주먹) → 선택 (Enter 대체)
                 elif gesture == "Fist":
                     last_gesture_nav_time = now
-                    games[selected_game][1](hand_controller)
+                    launch_selected_game()
 
             # 웹캠 미니 미리보기 (PIP)
+            panel_title = small_font.render("WEBCAM", True, BLUE)
+            screen.blit(
+                panel_title,
+                (
+                    WIDTH + (CAMERA_PANEL_WIDTH - panel_title.get_width()) // 2,
+                    CAMERA_PREVIEW_Y - 32,
+                ),
+            )
             preview = hand_controller.get_preview_surface()
             if preview is not None:
-                pip_x = WIDTH - 170
-                pip_y = HEIGHT - 130
                 pygame.draw.rect(
                     screen,
                     BLUE,
-                    (pip_x - 2, pip_y - 2, 164, 124),
-                    2
+                    (
+                        CAMERA_PREVIEW_X - 2,
+                        CAMERA_PREVIEW_Y - 2,
+                        CAMERA_PREVIEW_SIZE[0] + 4,
+                        CAMERA_PREVIEW_SIZE[1] + 4,
+                    ),
+                    2,
                 )
-                screen.blit(preview, (pip_x, pip_y))
+                preview = pygame.transform.smoothscale(
+                    preview, CAMERA_PREVIEW_SIZE
+                )
+                screen.blit(preview, (CAMERA_PREVIEW_X, CAMERA_PREVIEW_Y))
 
             # 손 인식 상태 표시
             if is_detected:
@@ -239,7 +279,15 @@ def main():
                     "Hand: Not Detected",
                     True, RED
                 )
-            screen.blit(status_text, (10, HEIGHT - 30))
+            screen.blit(
+                status_text,
+                (
+                    WIDTH + (CAMERA_PANEL_WIDTH - status_text.get_width()) // 2,
+                    CAMERA_PREVIEW_Y + CAMERA_PREVIEW_SIZE[1] + 14,
+                ),
+            )
+
+        pygame.draw.line(screen, WHITE, (WIDTH, 0), (WIDTH, HEIGHT), 2)
 
         # 화면 업데이트
         pygame.display.flip()

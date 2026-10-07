@@ -11,6 +11,11 @@ import pygame
 
 WIDTH = 800
 HEIGHT = 600
+CAMERA_PANEL_WIDTH = 240
+WINDOW_WIDTH = WIDTH + CAMERA_PANEL_WIDTH
+CAMERA_PREVIEW_SIZE = (160, 120)
+CAMERA_PREVIEW_X = WIDTH + (CAMERA_PANEL_WIDTH - CAMERA_PREVIEW_SIZE[0]) // 2
+CAMERA_PREVIEW_Y = 230
 FPS = 60
 MAX_LIVES = 3
 ROUND_TIME = 5.0
@@ -225,7 +230,7 @@ def _draw_centered(screen, font, text, color, y):
 
 
 def run_game(hand_controller=None):
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
     pygame.display.set_caption("Every One - Stroop Color Game")
     clock = pygame.time.Clock()
     title_font = _font(38, True)
@@ -380,6 +385,36 @@ def run_game(hand_controller=None):
                     478,
                 )
                 _draw_centered(screen, small_font, "ESC: 나가기", GRAY, 520)
+
+            pygame.draw.line(screen, WHITE, (WIDTH, 0), (WIDTH, HEIGHT), 2)
+
+            if hand_controller is not None:
+                panel_title = small_font.render("WEBCAM", True, GREEN)
+                screen.blit(
+                    panel_title,
+                    (
+                        WIDTH
+                        + (CAMERA_PANEL_WIDTH - panel_title.get_width()) // 2,
+                        CAMERA_PREVIEW_Y - 32,
+                    ),
+                )
+                preview = hand_controller.get_preview_surface()
+                if preview is not None:
+                    pygame.draw.rect(
+                        screen,
+                        GREEN,
+                        (
+                            CAMERA_PREVIEW_X - 2,
+                            CAMERA_PREVIEW_Y - 2,
+                            CAMERA_PREVIEW_SIZE[0] + 4,
+                            CAMERA_PREVIEW_SIZE[1] + 4,
+                        ),
+                        2,
+                    )
+                    preview = pygame.transform.smoothscale(
+                        preview, CAMERA_PREVIEW_SIZE
+                    )
+                    screen.blit(preview, (CAMERA_PREVIEW_X, CAMERA_PREVIEW_Y))
 
             pygame.display.flip()
             clock.tick(FPS)
