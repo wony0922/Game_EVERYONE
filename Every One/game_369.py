@@ -35,32 +35,22 @@ GREEN = (40, 160, 80)
 MAX_NUM = 500
 LIMIT_TIME = 5.0  # 제한시간 5초
 
-# --- 1~500 음성 인식용 사전 자동 생성 ---
-UNITS = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"]
-TENS = ["", "십", "이십", "삼십", "사십", "오십", "육십", "칠십", "팔십", "구십"]
-HUNDREDS = ["", "백", "이백", "삼백", "사백", "오백"]
 
-NATIVE_UNITS = ["", "하나", "둘", "셋", "넷", "다섯", "여섯", "일곱", "여덟", "아홉"]
-NATIVE_TENS = ["", "열", "스물", "서른", "마흔", "쉰", "예순", "일흔", "여든", "아흔"]
+# --- 숫자를 한글 읽기 발음으로 변환하는 헬퍼 함수 ---
+UNITS_TEXT = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"]
+TENS_TEXT = ["", "십", "이십", "삼십", "사십", "오십", "육십", "칠십", "팔십", "구십"]
+HUNDREDS_TEXT = ["", "백", "이백", "삼백", "사백", "오백"]
 
-KOREAN_NUM_WORDS = ["짝", "끝", "오백"]
-
-for h in HUNDREDS:
-    for t in TENS:
-        for u in UNITS:
-            word = f"{h}{t}{u}".strip()
-            if word and word not in KOREAN_NUM_WORDS:
-                KOREAN_NUM_WORDS.append(word)
-
-for t in NATIVE_TENS:
-    for u in NATIVE_UNITS:
-        word = f"{t}{u}".strip()
-        if word and word not in KOREAN_NUM_WORDS:
-            KOREAN_NUM_WORDS.append(word)
-
-for w in UNITS + TENS + HUNDREDS + NATIVE_UNITS + NATIVE_TENS:
-    if w and w not in KOREAN_NUM_WORDS:
-        KOREAN_NUM_WORDS.append(w)
+def get_korean_number_words(num):
+    if num == 500:
+        return ["오백"]
+    
+    h = num // 100
+    t = (num % 100) // 10
+    u = num % 10
+    
+    word = f"{HUNDREDS_TEXT[h]}{TENS_TEXT[t]}{UNITS_TEXT[u]}"
+    return [word, str(num)]
 
 
 # --- 한글 음성을 아라비아 숫자로 변환하는 파서 ---
@@ -219,11 +209,11 @@ class VoiceRecognizer:
         device_info = self._sounddevice.query_devices(kind="input")
         self.native_rate = int(device_info["default_samplerate"])
         
-        grammar = KOREAN_NUM_WORDS + ["[unk]"]
+        initial_grammar = ["짝", "착", "[unk]"]
         self._recognizer = KaldiRecognizer(
             self._model,
             self.native_rate,
-            json.dumps(grammar, ensure_ascii=False)
+            json.dumps(initial_grammar, ensure_ascii=False)
         )
 
         self._audio_queue = queue.Queue(maxsize=100)
@@ -232,6 +222,21 @@ class VoiceRecognizer:
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._listen, daemon=True)
         self._thread.start()
+
+    def update_grammar(self, current_num):
+        if self._recognizer is None:
+            return
+        
+        target_clap = check_369(current_num)
+        if target_clap > 0:
+            grammar = ["짝", "착", "짹", "[unk]"]
+        else:
+            grammar = get_korean_number_words(current_num) + ["짝", "[unk]"]
+            
+        try:
+            self._recognizer.SetGrammar(json.dumps(grammar, ensure_ascii=False))
+        except Exception:
+            pass
 
     def clear_results(self):
         while not self.results.empty():
@@ -363,6 +368,56 @@ def draw_pixel_cafe_scene(screen):
     pygame.draw.rect(screen, COLOR_MY_HAIR, (165, 310, 80, 75))
 
 
+def run_tutorial(screen, font_large, font_medium, font_small):
+    """게임 시작 전 규칙과 조작법을 알려주는 블랙보드 스타일 튜토리얼 화면"""
+    clock = pygame.time.Clock()
+    running = True
+
+    while running:
+        clock.tick(30)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return False
+                if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
+                    return True
+
+        # 블랙보드 배경 렌더링
+        screen.fill((30, 50, 40))
+        
+        # 테두리 칠판 느낌
+        pygame.draw.rect(screen, (70, 50, 30), (30, 30, 980, 540), 12)
+
+        title_surf = font_large.render("★ 369 게임 규칙 및 조작법 ★", True, (255, 230, 100))
+        screen.blit(title_surf, (1040 // 2 - title_surf.get_width() // 2, 70))
+
+        rules = [
+            "1. 턴이 돌아올 때마다 차례대로 숫자를 말하거나 입력하세요.",
+            "2. 숫자에 3, 6, 9가 포함되어 있다면 숫자가 아닌 '짝'을 외쳐야 합니다!",
+            "3. 제한 시간(5초) 내에 올바른 대답을 하지 못하면 게임이 종료됩니다.",
+            "",
+            "[조작 방법]",
+            "· 음성 조작: 마이크를 통해 숫자를 발음하거나 '짝'이라고 말하기",
+            "· 키보드 조작: 숫자 입력 후 [Enter], '짝'일 경우 [Space] 2번 연타"
+        ]
+
+        y_offset = 150
+        for rule in rules:
+            color = (255, 215, 0) if "조작 방법" in rule or "1." in rule or "2." in rule or "3." in rule else WHITE
+            rule_surf = font_medium.render(rule, True, color)
+            screen.blit(rule_surf, (80, y_offset))
+            y_offset += 40
+
+        prompt_surf = font_medium.render("▶ [SPACE] 또는 [ENTER]를 누르면 게임이 시작됩니다! (ESC: 메뉴)", True, (150, 255, 150))
+        screen.blit(prompt_surf, (1040 // 2 - prompt_surf.get_width() // 2, 500))
+
+        pygame.display.flip()
+
+    return True
+
+
 def run_game(hand_controller=None):
     SCREEN_WIDTH = 800
     SCREEN_HEIGHT = 600
@@ -384,6 +439,10 @@ def run_game(hand_controller=None):
         font_small = pygame.font.Font(None, 20)
         font_speech = pygame.font.Font(None, 32)
 
+    # 게임 시작 전 튜토리얼 먼저 실행
+    if not run_tutorial(screen, font_large, font_medium, font_small):
+        return
+
     recognizer = None
     setup_error = None
     try:
@@ -395,7 +454,7 @@ def run_game(hand_controller=None):
     is_player_turn = True
     game_over = False
     game_clear = False
-    message = "음성: 숫자 또는 '짝' 말하기 | 키보드: Enter / Space x2"
+    message = "게임을 진행하세요!"
     player_speech = ""
     bot_speech = ""
     bot_timer = 0
@@ -404,6 +463,9 @@ def run_game(hand_controller=None):
     turn_start_time = pygame.time.get_ticks()
     turn_unlocked_time = pygame.time.get_ticks()
 
+    if recognizer:
+        recognizer.update_grammar(current_num)
+
     def reset_game():
         nonlocal current_num, is_player_turn, game_over, game_clear, message
         nonlocal player_speech, bot_speech, bot_timer, input_buffer, space_press_count, turn_start_time, turn_unlocked_time
@@ -411,7 +473,7 @@ def run_game(hand_controller=None):
         is_player_turn = True
         game_over = False
         game_clear = False
-        message = "음성: 숫자 또는 '짝' 말하기 | 키보드: Enter / Space x2"
+        message = "게임을 진행하세요!"
         player_speech = ""
         bot_speech = ""
         bot_timer = 0
@@ -420,6 +482,7 @@ def run_game(hand_controller=None):
         turn_start_time = pygame.time.get_ticks()
         turn_unlocked_time = pygame.time.get_ticks() + 300
         if recognizer:
+            recognizer.update_grammar(current_num)
             recognizer.clear_results()
 
     def pass_player_turn(speech_text):
@@ -529,7 +592,7 @@ def run_game(hand_controller=None):
 
                             target_clap = check_369(current_num)
 
-                            if "짝" in raw_text or "착" in raw_text:
+                            if "짝" in raw_text or "착" in raw_text or "짹" in raw_text:
                                 if target_clap == 0:
                                     fail_player_turn("짝!", f"틀렸습니다! ({current_num}은/는 숫자를 말해야 합니다)")
                                 else:
@@ -538,7 +601,10 @@ def run_game(hand_controller=None):
 
                             parsed_val = parse_korean_number(raw_text)
                             if parsed_val is not None:
-                                if target_clap == 0 and parsed_val == current_num:
+                                if target_clap > 0:
+                                    fail_player_turn(str(parsed_val), f"틀렸습니다! ({current_num}은/는 짝을 외쳐야 합니다)")
+                                    break
+                                elif parsed_val == current_num:
                                     pass_player_turn(str(parsed_val))
                                     break
 
@@ -556,6 +622,7 @@ def run_game(hand_controller=None):
                         turn_start_time = pygame.time.get_ticks()
                         turn_unlocked_time = pygame.time.get_ticks() + 300
                         if recognizer:
+                            recognizer.update_grammar(current_num)
                             recognizer.clear_results()
 
             screen.fill((20, 20, 30))
@@ -581,7 +648,7 @@ def run_game(hand_controller=None):
 
             status_str = f"☕ 369 게임 | 목표: {MAX_NUM} | 현재 숫자: {current_num}"
             if not game_over and not game_clear:
-                status_str += "  ▶ [내 차례 - 숫자 또는 '짝']" if is_player_turn else "  ▶ [상대 생각 중...]"
+                status_str += "  ▶ [내 차례]" if is_player_turn else "  ▶ [상대 생각 중...]"
 
             hdr_txt = font_medium.render(status_str, True, BLACK)
             screen.blit(hdr_txt, (35, 502))

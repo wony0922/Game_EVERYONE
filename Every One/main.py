@@ -12,6 +12,8 @@ from pong import run_game
 from doom_wave import run_game as run_doom_wave
 from Stroop_Game import run_game as run_stroop_game
 from game_369 import run_game as run_369_game
+from game_1945 import run_game as run_1945_game
+from game_one_card import run_game as run_one_card_game
 
 try:
     from hand_controller import HandController
@@ -60,8 +62,10 @@ def main():
     games = [
         ("PONG", run_game),
         ("DOOM WAVE", run_doom_wave),
+        ("1945 AIR COMBAT", run_1945_game),
         ("STROOP COLOR", run_stroop_game),
         ("369 GAME", run_369_game),
+        ("ONE CARD", run_one_card_game),
     ]
 
     hand_input_block_until = 0

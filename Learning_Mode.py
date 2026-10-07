@@ -1,13 +1,6 @@
 """
 Learning_Mode.py – 손 동작 5회 학습 및 테스트 모드 + 최종 반영 시스템
 MediaPipe 1.0 (Tasks API) + OpenCV + Tkinter (WiFi 불필요, 100% 오프라인)
-
-[핵심 기능]
-1. 5개 데이터 수집: 5초 카운트다운을 통해 5개의 손 동작 데이터를 수집(라벨링 및 Photo_Learning 저장).
-2. 테스트 모드: 5개가 모두 학습되면 신규 학습이 즉시 반영된 상태로 웹캠 실시간 테스트 진행.
-3. 최종 반영 결정:
-   - YES: 기본 모드(custom_gestures.json)에 최종 반영 + 정확도(Accuracy: 0~1) 상승
-   - NO: 신규 학습 데이터 폐기 + 정확도(Accuracy) 하락
 """
 
 import cv2
@@ -40,7 +33,6 @@ DEFAULT_ACCURACY = 0.800
 
 
 def load_accuracy():
-    """저장된 정확도 수치를 불러옴 (기본값: 0.800)."""
     if os.path.exists(ACCURACY_FILE):
         try:
             with open(ACCURACY_FILE, "r", encoding="utf-8") as f:
@@ -52,7 +44,6 @@ def load_accuracy():
 
 
 def save_accuracy(acc, reason=""):
-    """정확도 수치를 0.0 ~ 1.0 범위로 클램핑하여 영구 저장."""
     acc = max(0.0, min(1.0, round(acc, 3)))
     history = []
     if os.path.exists(ACCURACY_FILE):
@@ -69,7 +60,6 @@ def save_accuracy(acc, reason=""):
         "reason": reason
     })
 
-    # 최근 50개 히스토리만 유지
     history = history[-50:]
 
     with open(ACCURACY_FILE, "w", encoding="utf-8") as f:
@@ -79,19 +69,11 @@ def save_accuracy(acc, reason=""):
 
 
 def calculate_accuracy_on_yes(current_acc):
-    """
-    YES (최종 반영 성공) 시 정확도 증가 함수:
-    - 남은 오차(1.0 - current_acc)의 20%를 개선하고 기본 가산 보너스 +0.025 부여
-    """
     improvement = (1.0 - current_acc) * 0.20 + 0.025
     return min(1.0, round(current_acc + improvement, 3))
 
 
 def calculate_accuracy_on_no(current_acc):
-    """
-    NO (반영 거부 / 오작동) 시 정확도 감소 함수:
-    - 현재 정확도의 15% 감점 및 기본 페널티 -0.030 부여
-    """
     penalty = current_acc * 0.15 + 0.030
     return max(0.0, round(current_acc - penalty, 3))
 
@@ -176,15 +158,10 @@ def landmarks_to_dicts(lm_list):
 
 
 def recognize_gesture(lm_list, custom_list, session_samples=None):
-    """
-    기본 제스처 + 기존 커스텀 제스처 + (테스트 시) 신규 학습 5개 샘플을 종합하여 인식.
-    """
-    # 1. 기본 제스처 판별
     for name, detect_fn in BASE_GESTURES:
         if detect_fn(lm_list):
             return name
 
-    # 2. 랜드마크 비교 대상 통합 (기존 커스텀 + 신규 세션 샘플)
     candidates = list(custom_list)
     if session_samples:
         candidates.extend(session_samples)
@@ -231,7 +208,7 @@ class LearningModal:
         self.lm_list = lm_list
         self.existing_customs = existing_customs
         self.session_samples = session_samples
-        self.sample_index = sample_index  # 1 ~ 5
+        self.sample_index = sample_index
         self.result_name = None
         self.root = None
 
@@ -242,7 +219,6 @@ class LearningModal:
         self.root.resizable(False, False)
         self.root.attributes("-topmost", True)
 
-        # 상단 타이틀
         header = tk.Label(self.root, text=f"🎯 학습 데이터 등록 ({self.sample_index} / 5번째)",
                           font=("맑은 고딕", 15, "bold"), fg="#ffd54f", bg="#13141f")
         header.pack(pady=(16, 6))
@@ -251,20 +227,17 @@ class LearningModal:
                        font=("맑은 고딕", 10), fg="#a0a0b0", bg="#13141f")
         sub.pack(pady=(0, 10))
 
-        # 캡처 이미지 표시
         img_rgb = cv2.cvtColor(self.captured_frame, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(img_rgb).resize((380, 280), Image.LANCZOS)
         self._photo = ImageTk.PhotoImage(img_pil)
         img_label = tk.Label(self.root, image=self._photo, bg="#13141f", bd=2, relief="groove")
         img_label.pack(pady=4)
 
-        # AI 인식 결과
         ai_box = tk.Label(self.root, text=f"현재 감지된 동작: {self.detected_gesture}",
                           font=("맑은 고딕", 11, "bold"), fg="#82b1ff", bg="#1c1e2f",
                           padx=12, pady=6, relief="ridge")
         ai_box.pack(pady=10)
 
-        # 선택 버튼 목록
         btn_frame = tk.Frame(self.root, bg="#13141f")
         btn_frame.pack(pady=6, padx=20, fill="x")
 
@@ -286,13 +259,11 @@ class LearningModal:
 
         next_row = row + 1 if col == 0 else row + 2
 
-        # 기타 (새 동작 입력) 버튼
         btn_other = tk.Button(btn_frame, text="✏️ 직접 새 동작 입력", font=("맑은 고딕", 10, "bold"),
                               fg="#69f0ae", bg="#1b3d2b", activebackground="#2a5d42",
                               relief="flat", cursor="hand2", command=self._show_input)
         btn_other.grid(row=next_row, column=0, padx=4, pady=4, sticky="ew")
 
-        # 재시도 버튼
         btn_retry = tk.Button(btn_frame, text="🔄 다시 캡처 (재시도)", font=("맑은 고딕", 10),
                               fg="#ffab91", bg="#3e231e", activebackground="#5e342d",
                               relief="flat", cursor="hand2", command=self._retry)
@@ -301,7 +272,6 @@ class LearningModal:
         btn_frame.columnconfigure(0, weight=1)
         btn_frame.columnconfigure(1, weight=1)
 
-        # 새 동작 입력창 (기본 숨김)
         self.entry_frame = tk.Frame(self.root, bg="#13141f")
         self.entry = tk.Entry(self.entry_frame, font=("맑은 고딕", 11),
                               bg="#202336", fg="#ffffff", insertbackground="#ffffff",
@@ -314,7 +284,6 @@ class LearningModal:
                            relief="flat", cursor="hand2", command=self._confirm_entry)
         btn_ok.pack(side="right")
 
-        # 창 위치 중앙
         self.root.update_idletasks()
         w = self.root.winfo_width()
         h = self.root.winfo_height()
@@ -364,7 +333,6 @@ class FinalConfirmationModal:
         self.root.resizable(False, False)
         self.root.attributes("-topmost", True)
 
-        # 제목
         title = tk.Label(self.root, text="📢 테스트 완료: 기본 모드에 최종 반영할까요?",
                          font=("맑은 고딕", 15, "bold"), fg="#ffffff", bg="#11131e")
         title.pack(pady=(20, 8), padx=20)
@@ -373,7 +341,6 @@ class FinalConfirmationModal:
                         font=("맑은 고딕", 10), fg="#a4b0be", bg="#11131e")
         desc.pack(pady=(0, 16), padx=20)
 
-        # 학습된 5개 동작 목록 박스
         list_box = tk.LabelFrame(self.root, text=" 5개 학습 완료 항목 ",
                                  font=("맑은 고딕", 10, "bold"), fg="#ffd32a", bg="#1e2235", padx=12, pady=8)
         list_box.pack(fill="x", padx=24, pady=6)
@@ -383,7 +350,6 @@ class FinalConfirmationModal:
                            font=("맑은 고딕", 10), fg="#f1f2f6", bg="#1e2235", anchor="w")
             lbl.pack(fill="x", pady=2)
 
-        # 정확도 변화 안내 프레임
         acc_frame = tk.Frame(self.root, bg="#181a29", bd=1, relief="solid", padx=16, pady=12)
         acc_frame.pack(fill="x", padx=24, pady=16)
 
@@ -399,7 +365,6 @@ class FinalConfirmationModal:
                            font=("맑은 고딕", 10), fg="#ff4757", bg="#181a29")
         no_info.pack(pady=3)
 
-        # 버튼 프레임 (YES / NO)
         btn_box = tk.Frame(self.root, bg="#11131e")
         btn_box.pack(pady=(8, 20), padx=24, fill="x")
 
@@ -415,7 +380,6 @@ class FinalConfirmationModal:
                            command=self._on_no)
         btn_no.pack(side="right", fill="x", expand=True, padx=(8, 0))
 
-        # 중앙 배치
         self.root.update_idletasks()
         w = self.root.winfo_width()
         h = self.root.winfo_height()
@@ -436,12 +400,15 @@ class FinalConfirmationModal:
 
 
 # ══════════════════════════════════════════════════════════
-#  카메라 및 MediaPipe 유틸
+#  카메라 및 MediaPipe 유틸 (USB 카메라 다중 지원 추가)
 # ══════════════════════════════════════════════════════════
 def open_camera(index=0):
     cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
     if not cap.isOpened():
+        cap = cv2.VideoCapture(index, cv2.CAP_MSMF)
+    if not cap.isOpened():
         cap = cv2.VideoCapture(index)
+        
     if cap.isOpened():
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -477,7 +444,6 @@ def main():
         print(f"[오류] MediaPipe 모델 파일이 없습니다: {MODEL_PATH}")
         return
 
-    # 모델 버퍼 로드 (한글 경로 회피)
     with open(MODEL_PATH, "rb") as f:
         model_bytes = f.read()
 
@@ -497,12 +463,10 @@ def main():
         print("[오류] 카메라를 열 수 없습니다.")
         return
 
-    # 데이터 상태
     existing_customs = load_custom_gestures()
     current_accuracy = load_accuracy()
-    session_samples = []  # 이번 세션에서 수집할 5개 샘플
+    session_samples = []
 
-    # 모드 상태: 'COLLECT' (5개 수집) ➔ 'TEST' (테스트 모드)
     app_mode = "COLLECT"
     countdown_active = False
     countdown_start = 0.0
@@ -530,7 +494,6 @@ def main():
             h, w, _ = frame.shape
             display = frame.copy()
 
-            # 손 감지
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             res = landmarker.detect(mp_img)
@@ -540,16 +503,13 @@ def main():
                 draw_landmarks_cv(display, latest_lm)
 
                 if app_mode == "COLLECT":
-                    # 수집 중에는 기존 모델 기준 인식
                     current_detected = recognize_gesture(latest_lm, existing_customs)
                 else:
-                    # 테스트 모드에서는 신규 5개 샘플까지 통합 반영하여 인식!
                     current_detected = recognize_gesture(latest_lm, existing_customs, session_samples)
             else:
                 current_detected = "-"
                 latest_lm = None
 
-            # ── 1. 수집 모드: 카운트다운 처리 ──
             if app_mode == "COLLECT" and countdown_active:
                 elapsed = time.time() - countdown_start
                 remaining = countdown_secs - int(elapsed)
@@ -566,7 +526,6 @@ def main():
                     cv2.putText(display, txt, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 6.0, (255, 200, 0), 16, cv2.LINE_AA)
                     cv2.putText(display, txt, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 6.0, (255, 255, 255), 10, cv2.LINE_AA)
                 else:
-                    # 5초 완료 ➔ 캡처 및 라벨링 모달 호출
                     countdown_active = False
                     captured = display.copy()
                     sample_idx = len(session_samples) + 1
@@ -579,10 +538,8 @@ def main():
                         countdown_active = True
                         countdown_start = time.time()
                     elif chosen_name is not None:
-                        # 사진 저장
                         save_photo(captured, chosen_name, prefix=f"Train_{sample_idx}")
 
-                        # 랜드마크 저장
                         lm_data = landmarks_to_dicts(latest_lm) if latest_lm else []
                         session_samples.append({
                             "name": chosen_name,
@@ -590,7 +547,6 @@ def main():
                         })
                         print(f"[학습 진행] ({len(session_samples)}/5) '{chosen_name}' 등록 완료")
 
-                        # 5개가 다 채워졌다면 ➔ 테스트 모드로 즉시 전환!
                         if len(session_samples) >= 5:
                             app_mode = "TEST"
                             print("\n" + "★" * 60)
@@ -599,8 +555,6 @@ def main():
                             print(" 테스트가 끝나면 [Space] 키를 눌러 최종 반영 여부를 선택하세요.")
                             print("★" * 60 + "\n")
 
-            # ── 2. 상단/하단 정보 HUD 렌더링 ──
-            # 상단 배너
             top_bar_color = (40, 40, 80) if app_mode == "COLLECT" else (20, 80, 40)
             cv2.rectangle(display, (0, 0), (w, 55), top_bar_color, -1)
 
@@ -611,12 +565,10 @@ def main():
                 mode_str = "TEST MODE (5 New Samples Applied)  |  [Space]: Final Decision (YES/NO)"
                 cv2.putText(display, mode_str, (15, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (100, 255, 150), 2, cv2.LINE_AA)
 
-            # 정확도 점수 표시 (상단 우측)
             acc_str = f"Accuracy: {current_accuracy:.3f}"
             (aw, _), _ = cv2.getTextSize(acc_str, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
             cv2.putText(display, acc_str, (w - aw - 20, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 220, 100), 2, cv2.LINE_AA)
 
-            # 하단 배너
             cv2.rectangle(display, (0, h - 50), (w, h), (15, 15, 25), -1)
             rec_text = f"Recognized: {current_detected}"
             cv2.putText(display, rec_text, (15, h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (160, 255, 160), 2, cv2.LINE_AA)
@@ -631,11 +583,9 @@ def main():
 
             cv2.imshow(window_name, display)
 
-            # 창 X 닫기 감지
             if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
                 break
 
-            # ── 3. 키 입력 처리 ──
             key = cv2.waitKey(1) & 0xFF
 
             if key == ord('q') or key == ord('Q') or key == 27:
@@ -647,18 +597,15 @@ def main():
                     countdown_start = time.time()
                     print(f"\n[학습 시작] {len(session_samples) + 1}번째 동작 캡처 5초 카운트다운 시작...")
 
-            elif (key == 32 or key == 13) and app_mode == "TEST":  # Space or Enter
-                # 최종 반영 확인 모달 호출
+            elif (key == 32 or key == 13) and app_mode == "TEST":
                 confirm_modal = FinalConfirmationModal(current_accuracy, session_samples)
                 decision = confirm_modal.show()
 
                 if decision is True:
-                    # YES 선택: 기존 custom_gestures.json에 5개 샘플 추가 반영
                     for s in session_samples:
                         existing_customs.append(s)
                     save_custom_gestures(existing_customs)
 
-                    # 정확도 상승 계산 및 저장
                     new_acc = calculate_accuracy_on_yes(current_accuracy)
                     current_accuracy = save_accuracy(new_acc, reason="YES: 5개 신규 학습 최종 반영 승인")
 
@@ -667,12 +614,10 @@ def main():
                     print(f" 정확도 수치 상승: ➔ {current_accuracy:.3f}")
                     print("★" * 60 + "\n")
 
-                    # 세션 리셋 (다시 수집 모드로)
                     session_samples = []
                     app_mode = "COLLECT"
 
                 elif decision is False:
-                    # NO 선택: 5개 샘플 폐기 및 정확도 감점
                     new_acc = calculate_accuracy_on_no(current_accuracy)
                     current_accuracy = save_accuracy(new_acc, reason="NO: 신규 학습 데이터 반영 거부")
 
@@ -685,7 +630,6 @@ def main():
                     app_mode = "COLLECT"
 
     finally:
-        # 안전한 자원 해제 (카메라 락 방지)
         if 'landmarker' in locals():
             landmarker.close()
         if 'cap' in locals() and cap is not None:
