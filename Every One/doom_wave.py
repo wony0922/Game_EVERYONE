@@ -358,39 +358,6 @@ def make_shaded_textures(base):
     return result
 
 
-def make_enemy_sprite(hit=False):
-    s = pygame.Surface((TEX_SIZE, TEX_SIZE), pygame.SRCALPHA)
-
-    body = (255, 255, 255) if hit else (175, 40, 35)
-    dark = (255, 255, 255) if hit else (110, 22, 20)
-    horn = (255, 255, 255) if hit else (225, 210, 170)
-
-    # 다리
-    pygame.draw.rect(s, dark, (20, 46, 9, 17))
-    pygame.draw.rect(s, dark, (35, 46, 9, 17))
-    # 몸통
-    pygame.draw.ellipse(s, body, (12, 22, 40, 32))
-    # 팔
-    pygame.draw.ellipse(s, dark, (4, 26, 12, 22))
-    pygame.draw.ellipse(s, dark, (48, 26, 12, 22))
-    # 머리
-    pygame.draw.ellipse(s, body, (19, 6, 26, 24))
-    # 뿔
-    pygame.draw.polygon(s, horn, [(21, 12), (14, 0), (26, 9)])
-    pygame.draw.polygon(s, horn, [(43, 12), (50, 0), (38, 9)])
-
-    if not hit:
-        # 눈
-        pygame.draw.rect(s, (255, 230, 60), (24, 14, 6, 4))
-        pygame.draw.rect(s, (255, 230, 60), (34, 14, 6, 4))
-        # 입
-        pygame.draw.rect(s, (40, 5, 5), (26, 22, 12, 4))
-        for i in range(3):
-            pygame.draw.rect(s, (240, 240, 240), (27 + i * 4, 22, 2, 2))
-
-    return s
-
-
 def make_gradient(top, bottom, height):
     surf = pygame.Surface((WIDTH, height))
     for y in range(height):
@@ -402,6 +369,336 @@ def make_gradient(top, bottom, height):
         )
         pygame.draw.line(surf, c, (0, y), (WIDTH, y))
     return surf
+
+
+# ==========================================
+# 적 외형 (벽돌 벽과 같은 도트 질감으로 절차 생성)
+# ==========================================
+#
+#  모든 적은 64x64 도트 그림으로 만든 뒤
+#   1) 벽돌처럼 픽셀 노이즈와 얼룩을 넣고
+#   2) 위쪽은 밝고 아래쪽은 어둡게 음영을 주고
+#   3) 어두운 1px 외곽선을 둘러
+#  벽과 같은 '거칠고 어두운 도트' 느낌을 낸다.
+#  화면에서는 벽처럼 거리에 따라 어두워진다.
+
+OUTLINE = (22, 15, 12)
+
+
+def _shade(c, k):
+    return (max(0, min(255, int(c[0] * k))),
+            max(0, min(255, int(c[1] * k))),
+            max(0, min(255, int(c[2] * k))))
+
+
+def _finish_sprite(s, seed, noise=14, stains=70):
+    """벽돌 텍스처와 같은 질감 처리: 노이즈 + 얼룩 + 세로 음영 + 외곽선"""
+    rnd = random.Random(seed)
+    w, h = s.get_size()
+    solid = [[s.get_at((x, y))[3] > 0 for x in range(w)] for y in range(h)]
+
+    for y in range(h):
+        light = 1.18 - 0.42 * (y / h)          # 위는 밝게, 아래는 어둡게
+        for x in range(w):
+            if not solid[y][x]:
+                continue
+            c = s.get_at((x, y))
+            n = rnd.randint(-noise, noise)
+            k = light
+            # 왼쪽 위에서 빛이 오는 느낌 (가장자리 오른쪽은 조금 어둡게)
+            if x + 1 < w and not solid[y][x + 1]:
+                k *= 0.78
+            if y > 0 and not solid[y - 1][x]:
+                k *= 1.15
+            s.set_at((x, y), (max(0, min(255, int(c[0] * k) + n)),
+                              max(0, min(255, int(c[1] * k) + n)),
+                              max(0, min(255, int(c[2] * k) + n)), 255))
+
+    # 얼룩 (벽돌 텍스처의 얼룩과 같은 방식)
+    for _ in range(stains):
+        x = rnd.randrange(w)
+        y = rnd.randrange(h)
+        if solid[y][x]:
+            c = s.get_at((x, y))
+            s.set_at((x, y), (max(0, c[0] - 34), max(0, c[1] - 28), max(0, c[2] - 22), 255))
+
+    # 1px 외곽선
+    edge = []
+    for y in range(h):
+        for x in range(w):
+            if solid[y][x]:
+                continue
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h and solid[ny][nx]:
+                    edge.append((x, y))
+                    break
+    for p in edge:
+        s.set_at(p, OUTLINE + (255,))
+    return s
+
+
+# ---------------- 종류별 그림 ----------------
+
+def _draw_brute(s, pal):
+    """뿔 달린 근육질 악마"""
+    d = pygame.draw
+    skin, dark, horn, eye = pal["skin"], pal["dark"], pal["horn"], pal["eye"]
+    # 다리 (굵고 짧게)
+    d.rect(s, dark, (19, 44, 10, 18))
+    d.rect(s, dark, (35, 44, 10, 18))
+    d.rect(s, _shade(dark, 0.7), (17, 59, 13, 5))
+    d.rect(s, _shade(dark, 0.7), (34, 59, 13, 5))
+    # 몸통 (역삼각형 근육질)
+    d.polygon(s, skin, [(10, 20), (54, 20), (48, 47), (16, 47)])
+    d.ellipse(s, _shade(skin, 1.1), (18, 23, 13, 11))     # 가슴 근육
+    d.ellipse(s, _shade(skin, 1.1), (33, 23, 13, 11))
+    for i in range(3):                                      # 복근
+        d.rect(s, _shade(skin, 0.8), (27, 35 + i * 4, 10, 2))
+    # 팔 (갈고리 손톱)
+    d.polygon(s, dark, [(10, 20), (3, 30), (4, 44), (10, 44), (14, 28)])
+    d.polygon(s, dark, [(54, 20), (61, 30), (60, 44), (54, 44), (50, 28)])
+    for i in range(3):
+        d.line(s, horn, (4 + i * 2, 44), (3 + i * 2, 48), 1)
+        d.line(s, horn, (55 + i * 2, 44), (56 + i * 2, 48), 1)
+    # 머리
+    d.ellipse(s, skin, (22, 5, 20, 19))
+    # 뿔
+    d.polygon(s, horn, [(24, 10), (14, 1), (17, 0), (28, 7)])
+    d.polygon(s, horn, [(40, 10), (50, 1), (47, 0), (36, 7)])
+    # 눈썹뼈 + 눈
+    d.rect(s, _shade(skin, 0.6), (25, 11, 14, 3))
+    d.rect(s, eye, (26, 13, 4, 3))
+    d.rect(s, eye, (34, 13, 4, 3))
+    # 입 (이빨)
+    d.rect(s, (40, 6, 6), (27, 18, 10, 4))
+    for i in range(4):
+        d.rect(s, (230, 220, 200), (27 + i * 3, 18, 1, 2))
+
+
+def _draw_ghoul(s, pal):
+    """해골 구울 (누더기를 걸친 뼈)"""
+    d = pygame.draw
+    bone, cloth, eye = pal["bone"], pal["cloth"], pal["eye"]
+    # 다리뼈
+    d.rect(s, bone, (24, 46, 4, 16))
+    d.rect(s, bone, (36, 46, 4, 16))
+    d.rect(s, bone, (21, 60, 8, 4))
+    d.rect(s, bone, (35, 60, 8, 4))
+    # 누더기 천 (허리)
+    d.polygon(s, cloth, [(18, 38), (46, 38), (49, 52), (43, 49), (38, 54), (32, 49),
+                         (26, 54), (21, 49), (15, 52)])
+    # 갈비뼈
+    d.rect(s, bone, (30, 18, 4, 22))                     # 척추
+    for i in range(4):
+        y = 20 + i * 5
+        d.line(s, bone, (31, y), (21 + i, y + 2), 2)
+        d.line(s, bone, (32, y), (42 - i, y + 2), 2)
+    # 어깨 + 팔뼈 (앞으로 뻗음)
+    d.line(s, bone, (20, 19), (44, 19), 3)
+    d.line(s, bone, (20, 19), (10, 32), 3)
+    d.line(s, bone, (10, 32), (8, 44), 2)
+    d.line(s, bone, (44, 19), (54, 32), 3)
+    d.line(s, bone, (54, 32), (56, 44), 2)
+    # 해골
+    d.ellipse(s, bone, (21, 0, 22, 20))
+    d.rect(s, bone, (25, 14, 14, 7))
+    d.ellipse(s, (18, 10, 8), (24, 6, 7, 7))             # 눈구멍
+    d.ellipse(s, (18, 10, 8), (33, 6, 7, 7))
+    d.rect(s, eye, (26, 8, 3, 3))                         # 눈빛
+    d.rect(s, eye, (35, 8, 3, 3))
+    d.polygon(s, (30, 18, 12), [(31, 13), (33, 13), (32, 16)])   # 코
+    for i in range(5):                                    # 이빨
+        d.rect(s, (40, 26, 18), (26 + i * 3, 19, 1, 3))
+
+
+def _draw_slime(s, pal):
+    """점액 덩어리 (작고 낮음)"""
+    d = pygame.draw
+    body, core, eye = pal["body"], pal["core"], pal["eye"]
+    # 바닥에 퍼진 점액
+    d.ellipse(s, _shade(body, 0.75), (2, 48, 60, 16))
+    # 몸통 (물방울 형태)
+    d.polygon(s, body, [(32, 6), (44, 20), (54, 38), (56, 54), (8, 54), (10, 38), (20, 20)])
+    d.ellipse(s, body, (6, 26, 52, 32))
+    # 안쪽 핵 + 녹아 흐르는 방울
+    d.ellipse(s, core, (20, 30, 24, 18))
+    d.ellipse(s, _shade(body, 1.25), (16, 16, 8, 12))     # 광택
+    for x, y in ((12, 56), (50, 57), (30, 59)):
+        d.rect(s, body, (x, y, 3, 5))
+    # 눈 3개 (짝짝이)
+    for (x, y, r) in ((24, 26, 5), (38, 24, 6), (31, 36, 4)):
+        d.circle(s, (235, 230, 210), (x, y), r)
+        d.circle(s, eye, (x + 1, y), max(1, r // 2))
+
+
+def _draw_golem(s, pal, brick):
+    """벽돌 골렘 : 복도 벽과 같은 벽돌로 만들어진 거인"""
+    d = pygame.draw
+    mask = pygame.Surface((TEX_SIZE, TEX_SIZE), pygame.SRCALPHA)
+    white = (255, 255, 255)
+    # 몸 실루엣 (넓은 어깨, 두꺼운 팔다리)
+    d.rect(mask, white, (14, 18, 36, 28))        # 몸통
+    d.rect(mask, white, (22, 4, 20, 16))         # 머리
+    d.rect(mask, white, (2, 18, 13, 30))         # 왼팔
+    d.rect(mask, white, (49, 18, 13, 30))        # 오른팔
+    d.rect(mask, white, (0, 44, 16, 10))         # 주먹
+    d.rect(mask, white, (48, 44, 16, 10))
+    d.rect(mask, white, (16, 46, 13, 18))        # 다리
+    d.rect(mask, white, (35, 46, 13, 18))
+    # 실루엣 모양대로 벽돌 텍스처를 잘라 붙인다
+    for y in range(TEX_SIZE):
+        for x in range(TEX_SIZE):
+            if mask.get_at((x, y))[3] > 0:
+                c = brick.get_at(((x * 2) % TEX_SIZE, (y * 2) % TEX_SIZE))
+                s.set_at((x, y), (int(c[0] * pal["tint"][0]),
+                                  int(c[1] * pal["tint"][1]),
+                                  int(c[2] * pal["tint"][2]), 255))
+    # 벽돌 틈으로 새어 나오는 빛 (가슴 균열)
+    glow = pal["glow"]
+    d.line(s, glow, (28, 24), (32, 32), 2)
+    d.line(s, glow, (32, 32), (29, 40), 2)
+    d.line(s, glow, (32, 32), (37, 36), 1)
+    # 팔·다리 균열
+    d.line(s, glow, (8, 24), (6, 34), 1)
+    d.line(s, glow, (56, 22), (58, 32), 1)
+    d.line(s, glow, (22, 50), (20, 58), 1)
+    d.line(s, glow, (41, 50), (43, 57), 1)
+    # 눈
+    d.rect(s, glow, (26, 10, 5, 3))
+    d.rect(s, glow, (34, 10, 5, 3))
+
+
+def _draw_eye(s, pal):
+    """떠다니는 눈알 괴물 (촉수)"""
+    d = pygame.draw
+    flesh, vein, iris = pal["flesh"], pal["vein"], pal["iris"]
+    # 촉수
+    for i, x in enumerate((16, 24, 32, 40, 48)):
+        sway = (-3, 2, -1, 3, -2)[i]
+        d.line(s, _shade(flesh, 0.7), (x, 40), (x + sway, 52), 4)
+        d.line(s, _shade(flesh, 0.6), (x + sway, 52), (x - sway, 62), 3)
+    # 몸통 구
+    d.circle(s, flesh, (32, 28), 22)
+    # 핏줄
+    for a, b in (((14, 22), (22, 26)), ((48, 18), (42, 24)), ((18, 40), (25, 35)),
+                 ((46, 40), (40, 35))):
+        d.line(s, vein, a, b, 1)
+    # 큰 눈
+    d.ellipse(s, (230, 222, 205), (17, 16, 30, 24))
+    d.circle(s, iris, (32, 28), 9)
+    d.circle(s, (10, 8, 8), (32, 28), 4)
+    d.rect(s, (255, 255, 240), (28, 23, 3, 3))           # 반사광
+    # 눈꺼풀
+    d.arc(s, _shade(flesh, 0.6), (15, 13, 34, 30), 0.2, 2.94, 3)
+
+
+def _draw_wraith(s, pal):
+    """그림자 망령 (두건 + 누더기 망토, 떠 있음)"""
+    d = pygame.draw
+    cloak, inner, glow = pal["cloak"], pal["inner"], pal["glow"]
+    # 망토 (아래로 갈수록 찢어짐)
+    d.polygon(s, cloak, [(32, 2), (46, 12), (52, 30), (58, 52), (52, 46), (48, 62),
+                         (42, 52), (36, 63), (30, 53), (24, 63), (19, 52), (13, 61),
+                         (10, 47), (6, 52), (12, 30), (18, 12)])
+    # 두건 안쪽 어둠
+    d.ellipse(s, inner, (21, 9, 22, 20))
+    # 빛나는 눈
+    d.rect(s, glow, (25, 17, 5, 3))
+    d.rect(s, glow, (35, 17, 5, 3))
+    d.rect(s, _shade(glow, 0.6), (26, 20, 3, 1))
+    d.rect(s, _shade(glow, 0.6), (36, 20, 3, 1))
+    # 앙상한 손
+    d.line(s, (150, 140, 128), (12, 34), (6, 40), 2)
+    d.line(s, (150, 140, 128), (52, 34), (58, 40), 2)
+    # 망토 주름
+    for x in (22, 32, 42):
+        d.line(s, _shade(cloak, 0.65), (x, 30), (x + 1, 56), 1)
+
+
+# ---------------- 종류 정의 ----------------
+#  scale : 화면 크기 배율,  float : 바닥에서 떠 있는 높이 (0 이면 서 있음)
+#  hp    : 이 종류가 나올 수 있는 체력
+ENEMY_KINDS = {
+    "brute": {
+        "draw": _draw_brute, "scale": 0.86, "float": 0.0, "hp": (1, 2),
+        "variants": [
+            {"skin": (150, 52, 38), "dark": (96, 30, 22), "horn": (214, 196, 160), "eye": (255, 214, 60)},
+            {"skin": (112, 104, 96), "dark": (66, 60, 56), "horn": (190, 70, 40), "eye": (255, 90, 40)},
+            {"skin": (104, 112, 60), "dark": (60, 66, 32), "horn": (200, 186, 150), "eye": (255, 240, 120)},
+        ],
+    },
+    "ghoul": {
+        "draw": _draw_ghoul, "scale": 0.84, "float": 0.0, "hp": (1, 2),
+        "variants": [
+            {"bone": (206, 192, 160), "cloth": (92, 74, 54), "eye": (255, 70, 50)},
+            {"bone": (180, 170, 150), "cloth": (120, 46, 36), "eye": (110, 240, 255)},
+        ],
+    },
+    "slime": {
+        "draw": _draw_slime, "scale": 0.62, "float": 0.0, "hp": (1,),
+        "variants": [
+            {"body": (92, 150, 52), "core": (150, 200, 70), "eye": (40, 20, 10)},
+            {"body": (120, 66, 140), "core": (176, 110, 190), "eye": (255, 220, 60)},
+            {"body": (176, 104, 36), "core": (230, 160, 60), "eye": (30, 10, 10)},
+        ],
+    },
+    "golem": {
+        "draw": _draw_golem, "scale": 0.98, "float": 0.0, "hp": (3,),
+        "variants": [
+            {"tint": (0.95, 0.80, 0.70), "glow": (255, 150, 40)},
+            {"tint": (0.66, 0.86, 0.62), "glow": (120, 220, 255)},
+        ],
+    },
+    "eye": {
+        "draw": _draw_eye, "scale": 0.62, "float": 0.32, "hp": (1, 2),
+        "variants": [
+            {"flesh": (176, 96, 92), "vein": (120, 30, 30), "iris": (60, 160, 70)},
+            {"flesh": (96, 112, 150), "vein": (40, 40, 90), "iris": (220, 60, 40)},
+        ],
+    },
+    "wraith": {
+        "draw": _draw_wraith, "scale": 0.8, "float": 0.12, "hp": (1, 2),
+        "variants": [
+            {"cloak": (58, 50, 64), "inner": (10, 8, 12), "glow": (190, 90, 255)},
+            {"cloak": (44, 58, 60), "inner": (8, 12, 12), "glow": (90, 240, 220)},
+        ],
+    },
+}
+
+
+def build_enemy_sprites(brick):
+    """(종류, 변형) → {'shades': [거리별 이미지], 'hit': 피격 이미지}"""
+    sprites = {}
+    for kind_index, (kind, info) in enumerate(ENEMY_KINDS.items()):
+        for vi, pal in enumerate(info["variants"]):
+            s = pygame.Surface((TEX_SIZE, TEX_SIZE), pygame.SRCALPHA)
+            if kind == "golem":
+                info["draw"](s, pal, brick)
+                _finish_sprite(s, seed=kind_index * 10 + vi, noise=6, stains=20)
+            else:
+                info["draw"](s, pal)
+                _finish_sprite(s, seed=kind_index * 10 + vi)
+
+            shades = []
+            for lv in range(SHADE_LEVELS):
+                t = s.copy()
+                v = int(255 * (1.0 - lv / SHADE_LEVELS * 0.78))
+                t.fill((v, v, v), special_flags=pygame.BLEND_RGB_MULT)
+                shades.append(t)
+
+            hit = s.copy()
+            hit.fill((255, 255, 255), special_flags=pygame.BLEND_RGB_MAX)
+            sprites[(kind, vi)] = {"shades": shades, "hit": hit}
+    return sprites
+
+
+def choose_enemy_kind(hp):
+    """체력에 맞는 종류와 색 변형을 무작위로 고른다"""
+    kinds = [k for k, info in ENEMY_KINDS.items() if hp in info["hp"]]
+    kind = random.choice(kinds)
+    variant = random.randrange(len(ENEMY_KINDS[kind]["variants"]))
+    return kind, variant
 
 
 # ==========================================
@@ -419,6 +716,9 @@ class Enemy:
         self.hit_flash = 0.0
         self.age = 0.0           # 스폰 후 경과 시간
         self.time_left = ENEMY_TIME_LIMIT
+        # 외형: 체력에 맞는 종류 + 색 변형
+        self.kind, self.variant = choose_enemy_kind(hp)
+        self.bob_phase = random.uniform(0, math.tau)
 
     def update(self, dt):
         # 적은 절대 움직이지 않는다. 시간만 흐른다.
@@ -437,8 +737,7 @@ class Renderer:
     def __init__(self):
         base = make_brick_texture()
         self.wall_tex = make_shaded_textures(base)
-        self.enemy_img = make_enemy_sprite(False)
-        self.enemy_hit_img = make_enemy_sprite(True)
+        self.enemy_sprites = build_enemy_sprites(base)
 
         self.ceiling = make_gradient((26, 24, 30), (6, 6, 8), HEIGHT // 2)
         self.floor = make_gradient((8, 7, 7), (58, 50, 44), HEIGHT // 2)
@@ -501,7 +800,8 @@ class Renderer:
         if screen_x is None:
             return None
 
-        size = int(HEIGHT / depth * 0.82)
+        kind = ENEMY_KINDS[enemy.kind]
+        size = int(HEIGHT / depth * kind["scale"])
 
         # 스폰 연출: 0.25초 동안 커지며 등장
         if enemy.age < 0.25:
@@ -509,6 +809,10 @@ class Renderer:
 
         # 바닥에 발을 붙인다 (벽의 아래쪽과 같은 높이)
         floor_y = HEIGHT / 2 + (HEIGHT / depth) / 2
+        # 떠 있는 종류는 바닥에서 띄우고 위아래로 천천히 흔들린다
+        if kind["float"] > 0:
+            bob = math.sin(enemy.age * 2.6 + enemy.bob_phase) * 0.03
+            floor_y -= (HEIGHT / depth) * (kind["float"] + bob)
         top = int(floor_y - size)
         left = int(screen_x - size / 2)
         return screen_x, depth, size, left, top
@@ -529,7 +833,13 @@ class Renderer:
             if left > WIDTH or left + size < 0:
                 continue
 
-            img = self.enemy_hit_img if enemy.hit_flash > 0 else self.enemy_img
+            art = self.enemy_sprites[(enemy.kind, enemy.variant)]
+            if enemy.hit_flash > 0:
+                img = art["hit"]
+            else:
+                # 벽과 같은 기준으로 거리에 따라 어둡게
+                shade = min(SHADE_LEVELS - 1, int(depth / MAX_SHADE_DIST * SHADE_LEVELS))
+                img = art["shades"][shade]
             scaled = pygame.transform.scale(img, (size, size))
 
             # z-buffer 로 벽에 가려진 부분은 그리지 않음
