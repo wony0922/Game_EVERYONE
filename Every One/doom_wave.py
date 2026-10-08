@@ -1,4 +1,5 @@
 import pygame
+from game_tutorial import show_tutorial
 import random
 import math
 import os
@@ -1190,6 +1191,26 @@ def run_game(hand_controller=None):
     font = pygame.font.Font(None, 34)
     big_font = pygame.font.Font(None, 72)
     small_font = pygame.font.Font(None, 25)
+
+    if not show_tutorial(
+        screen,
+        "DOOM WAVE - 규칙 및 조작법",
+        [
+            ("게임 목표", [
+                "60초 동안 살아남으세요. 목숨은 5개입니다.",
+                "적을 7초 안에 처치하지 못하면 목숨이 줄어듭니다.",
+            ]),
+            ("조작 방법", [
+                "손을 좌우로 이동하거나 ← / → 방향키: 시점 회전",
+                "주먹(Fist), 클릭, Space 또는 Enter: 화면 중앙에 발사",
+                "게임 오버 후 Enter 또는 주먹: 다시 시작 | ESC: 메뉴",
+            ]),
+        ],
+        hand_controller,
+    ):
+        if own_controller and hand_controller is not None:
+            hand_controller.stop()
+        return
 
     renderer = Renderer()
     gun = Revolver()

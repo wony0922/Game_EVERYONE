@@ -108,6 +108,7 @@ def run_game(hand_controller=None):
     turn_start_time = 0
     gesture_locked = False
     lock_timer = 0
+    instruction_transition_ready_at = 0
     ai_think_end_time = 0
 
     # 카드 날아가는 애니메이션 관리 리스트 ([x, y, target_x, target_y, progress, total_frames])
@@ -191,7 +192,7 @@ def run_game(hand_controller=None):
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
             if gesture in ["None", "Unknown"]:
                 gesture_locked = False
-            elif gesture_locked and current_time - lock_timer > 1200:
+            elif gesture_locked and current_time - lock_timer >= 1500:
                 gesture_locked = False
 
         # ==========================================
@@ -204,12 +205,24 @@ def run_game(hand_controller=None):
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running = False
-                    elif event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                    elif (
+                        event.key in (pygame.K_SPACE, pygame.K_RETURN)
+                        and current_time >= instruction_transition_ready_at
+                    ):
                         game_state = "INSTRUCTION_2"
+                        instruction_transition_ready_at = current_time + 1500
 
-            if hand_controller is not None and is_detected and gesture == "Fist" and not gesture_locked:
+            if (
+                hand_controller is not None
+                and is_detected
+                and gesture == "Fist"
+                and not gesture_locked
+                and current_time >= instruction_transition_ready_at
+            ):
                 gesture_locked = True
+                lock_timer = current_time
                 game_state = "INSTRUCTION_2"
+                instruction_transition_ready_at = current_time + 1500
 
             screen.fill(BG_COLOR)
             board_rect = pygame.Rect(40, 20, WIDTH - 80, HEIGHT - 40)
@@ -242,7 +255,11 @@ def run_game(hand_controller=None):
                 screen.blit(txt_surf, (65, start_y))
                 start_y += 28
 
-            prompt_text = "스페이스바(Space) 또는 주먹(Fist)을 쥐면 조작법 안내로 넘어갑니다 [ 1 / 2 ]"
+            prompt_text = (
+                "잠시 기다려 주세요..."
+                if current_time < instruction_transition_ready_at
+                else "스페이스바(Space) 또는 주먹(Fist)을 쥐면 조작법 안내로 넘어갑니다 [ 1 / 2 ]"
+            )
             prompt_surf = font_main.render(prompt_text, True, YELLOW)
             if (current_time // 400) % 2 == 0:
                 screen.blit(prompt_surf, (WIDTH // 2 - prompt_surf.get_width() // 2, HEIGHT - 65))
@@ -273,14 +290,26 @@ def run_game(hand_controller=None):
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running = False
-                    elif event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                    elif (
+                        event.key in (pygame.K_SPACE, pygame.K_RETURN)
+                        and current_time >= instruction_transition_ready_at
+                    ):
                         game_state = "PLAYING"
                         turn_start_time = pygame.time.get_ticks()
+                        instruction_transition_ready_at = current_time + 1500
 
-            if hand_controller is not None and is_detected and gesture == "Fist" and not gesture_locked:
+            if (
+                hand_controller is not None
+                and is_detected
+                and gesture == "Fist"
+                and not gesture_locked
+                and current_time >= instruction_transition_ready_at
+            ):
                 gesture_locked = True
+                lock_timer = current_time
                 game_state = "PLAYING"
                 turn_start_time = pygame.time.get_ticks()
+                instruction_transition_ready_at = current_time + 1500
 
             screen.fill(BG_COLOR)
             board_rect = pygame.Rect(40, 20, WIDTH - 80, HEIGHT - 40)
@@ -314,7 +343,11 @@ def run_game(hand_controller=None):
                 screen.blit(txt_surf, (65, start_y))
                 start_y += 28
 
-            prompt_text = "스페이스바(Space) 또는 주먹(Fist)을 쥐면 본격적인 게임이 시작됩니다! [ 2 / 2 ]"
+            prompt_text = (
+                "잠시 기다려 주세요..."
+                if current_time < instruction_transition_ready_at
+                else "스페이스바(Space) 또는 주먹(Fist)을 쥐면 본격적인 게임이 시작됩니다! [ 2 / 2 ]"
+            )
             prompt_surf = font_main.render(prompt_text, True, YELLOW)
             if (current_time // 400) % 2 == 0:
                 screen.blit(prompt_surf, (WIDTH // 2 - prompt_surf.get_width() // 2, HEIGHT - 65))

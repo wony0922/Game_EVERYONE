@@ -8,6 +8,8 @@ import threading
 
 import pygame
 
+from game_tutorial import show_tutorial
+
 
 WIDTH = 800
 HEIGHT = 600
@@ -276,6 +278,24 @@ def run_game(hand_controller=None):
     word_font = _font(100, True)
     body_font = _font(30)
     small_font = _font(22)
+
+    if not show_tutorial(
+        screen,
+        "STROOP COLOR - 규칙 및 조작법",
+        [
+            ("게임 목표", [
+                "화면에 적힌 글자가 아니라 글자의 실제 색깔을 맞히세요.",
+                "제한 시간 안에 정답을 맞히고, 목숨 5개를 지키세요.",
+            ]),
+            ("조작 방법", [
+                "마이크에 색깔 이름을 말하거나 해당 숫자 키를 누르세요.",
+                "1 빨강   2 파랑   3 노랑   4 초록   5 보라   6 주황",
+                "음성 또는 키 입력 제한 시간: 1.5초 | ESC: 메뉴",
+            ]),
+        ],
+        hand_controller,
+    ):
+        return
 
     recognizer = None
     setup_error = None

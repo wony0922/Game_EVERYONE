@@ -3,6 +3,7 @@ import random
 import os
 import sys
 from hand_input import scale_hand_x
+from game_tutorial import show_tutorial
 
 # 상위 경로 모듈 검색 추가
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -104,6 +105,25 @@ def run_game(hand_controller=None):
         None,
         80
     )
+
+    if not show_tutorial(
+        screen,
+        "PONG - 규칙 및 조작법",
+        [
+            ("게임 목표", [
+                "공을 패들로 받아내며 점수를 얻으세요.",
+                "공을 놓치면 목숨이 줄고, 목숨이 모두 없어지면 게임이 끝납니다.",
+            ]),
+            ("조작 방법", [
+                "손 좌우 이동 또는 ← / → 방향키: 패들 이동",
+                "주먹(Fist) 또는 Enter: 잠시 방어 발동",
+            ]),
+        ],
+        hand_controller,
+    ):
+        if own_controller and hand_controller is not None:
+            hand_controller.stop()
+        return
 
 
     # --------------------------------------

@@ -1,4 +1,4 @@
-HAND_X_SENSITIVITY = 2.3
+HAND_X_SENSITIVITY = 2.0
 
 
 def scale_hand_x(hand_x):
