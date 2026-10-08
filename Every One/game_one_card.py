@@ -116,8 +116,8 @@ def run_game(hand_controller=None):
     instruction_fist_armed = hand_controller is None
     instruction_back_armed = True
     ai_think_end_time = 0
-    victory_exit = VictoryExit()
-    instruction_back_gesture = VictoryExit()
+    victory_exit = VictoryExit(hold_time_ms=1200)
+    instruction_back_gesture = VictoryExit(hold_time_ms=1200)
 
     # 카드 날아가는 애니메이션 관리 리스트 ([x, y, target_x, target_y, progress, total_frames])
     flying_cards = []
@@ -199,6 +199,7 @@ def run_game(hand_controller=None):
         if hand_controller is not None:
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
             if game_state in ("INSTRUCTION_1", "INSTRUCTION_2"):
+                instruction_back = False
                 if not is_detected or gesture != "Victory":
                     instruction_back_gesture.update(
                         False, "None", current_time
@@ -312,7 +313,7 @@ def run_game(hand_controller=None):
             prompt_text = (
                 "잠시 기다려 주세요..."
                 if current_time < instruction_transition_ready_at
-                else "Space / 주먹: 다음 안내    |    ESC / V 모양 1초: 메뉴"
+                else "Space / 주먹: 다음 안내    |    ESC / V 모양 1.2초: 메뉴"
             )
             prompt_surf = font_main.render(prompt_text, True, YELLOW)
             if (current_time // 400) % 2 == 0:
@@ -387,11 +388,11 @@ def run_game(hand_controller=None):
                 ("  ※ 주먹이나 손바닥을 핀 채로 움직이면 인식이 꼬일 수 있으니 주의하세요!", YELLOW),
                 ("• [주먹 (Fist)]: 선택한 카드 내기 / 메뉴 진행", WHITE),
                 ("• [승리 V (Victory)]: 카드 한 장 뽑기", WHITE),
-                ("• [펴진 손 (Palm)]: 패스하기", WHITE),
+                ("• [펴진 손 (Palm)]: 카드 1장 뽑고 턴 넘기기", WHITE),
                 ("", WHITE),
                 ("⌨️ 키보드 조작법", BLUE),
                 ("• ← / → 방향키: 카드 선택  |  ENTER / SPACE: 카드 내기", WHITE),
-                ("• D 키: 카드 뽑기  |  P 키: 패스", WHITE),
+                ("• D 키: 카드 뽑기  |  P 키: 카드 1장 뽑고 턴 넘기기", WHITE),
                 ("• 20초 제한 시간 초과 시 자동으로 카드를 먹고 턴이 넘어갑니다.", WHITE),
             ]
 
@@ -407,7 +408,7 @@ def run_game(hand_controller=None):
             prompt_text = (
                 "잠시 기다려 주세요..."
                 if current_time < instruction_transition_ready_at
-                else "Space / 주먹: 게임 시작    |    ESC / V 모양 1초: 이전 안내"
+                else "Space / 주먹: 게임 시작    |    ESC / V 모양 1.2초: 이전 안내"
             )
             prompt_surf = font_main.render(prompt_text, True, YELLOW)
             if (current_time // 400) % 2 == 0:
@@ -543,12 +544,13 @@ def run_game(hand_controller=None):
                 elif gesture == "Open Palm" and not gesture_locked:
                     gesture_locked = True
                     lock_timer = current_time
+                    draw_count = attack_stack if attack_stack > 0 else 1
+                    draw_cards(player_hand, draw_count, "PLAYER")
                     if attack_stack > 0:
-                        draw_cards(player_hand, attack_stack, "PLAYER")
-                        message = f"공격 방어 실패! 카드를 {attack_stack}장 먹고 패스합니다."
+                        message = f"공격 방어 실패! 카드 {draw_count}장을 먹고 턴을 넘깁니다."
                         attack_stack = 0
                     else:
-                        message = "패스했습니다. AI 차례입니다."
+                        message = "카드 1장을 뽑고 턴을 넘깁니다."
                     turn = "AI"
                     ai_think_end_time = current_time + random.randint(3000, 6000)
 
@@ -605,12 +607,13 @@ def run_game(hand_controller=None):
                         turn = "AI"
                         ai_think_end_time = current_time + random.randint(3000, 6000)
                     elif event.key == pygame.K_p:
+                        draw_count = attack_stack if attack_stack > 0 else 1
+                        draw_cards(player_hand, draw_count, "PLAYER")
                         if attack_stack > 0:
-                            draw_cards(player_hand, attack_stack, "PLAYER")
-                            message = f"공격 방어 실패! {attack_stack}장 획득 후 패스."
+                            message = f"공격 방어 실패! 카드 {draw_count}장을 먹고 턴을 넘깁니다."
                             attack_stack = 0
                         else:
-                            message = "패스했습니다."
+                            message = "카드 1장을 뽑고 턴을 넘깁니다."
                         turn = "AI"
                         ai_think_end_time = current_time + random.randint(3000, 6000)
 
@@ -777,9 +780,9 @@ def run_game(hand_controller=None):
         screen.blit(msg_surf, (35, HEIGHT - 212))
 
         if hand_controller is not None:
-            guide = "Point: 선택 | Fist: 내기 | Victory: 뽑기/메뉴(1초 유지) | Palm: 패스"
+            guide = "Point: 선택 | Fist: 내기 | Victory: 뽑기/메뉴(1.2초 유지) | Palm: 1장 뽑고 넘기기"
         else:
-            guide = "←/→: 카드 선택 | ENTER: 카드 내기 | D: 뽑기 | P: 패스"
+            guide = "←/→: 카드 선택 | ENTER: 카드 내기 | D: 뽑기 | P: 1장 뽑고 넘기기"
         g_surf = font_small.render(guide, True, GRAY)
         screen.blit(g_surf, (WIDTH // 2 - g_surf.get_width() // 2, HEIGHT - 30))
 
