@@ -4,7 +4,7 @@ import os
 import sys
 from hand_input import scale_hand_x
 from game_tutorial import show_tutorial
-from hand_exit import ThumbsUpExit
+from hand_exit import VictoryExit
 
 # 상위 경로 모듈 검색 추가
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -121,6 +121,7 @@ def run_game(hand_controller=None):
             ]),
         ],
         hand_controller,
+        require_fist=True,
     ):
         if own_controller and hand_controller is not None:
             hand_controller.stop()
@@ -247,7 +248,7 @@ def run_game(hand_controller=None):
     # 게임 루프
     # ======================================
 
-    thumbs_up_exit = ThumbsUpExit()
+    victory_exit = VictoryExit()
     while running:
 
         clock.tick(FPS)
@@ -255,7 +256,7 @@ def run_game(hand_controller=None):
         gesture = "None"
         if hand_controller is not None:
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
-        if thumbs_up_exit.update(
+        if victory_exit.update(
             is_detected, gesture, pygame.time.get_ticks()
         ):
             break

@@ -3,7 +3,7 @@ import random
 import os
 import sys
 from hand_input import scale_hand_x
-from hand_exit import ThumbsUpExit
+from hand_exit import VictoryExit
 
 # 상위 경로 모듈 검색 추가
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -109,9 +109,14 @@ def run_game(hand_controller=None):
     turn_start_time = 0
     gesture_locked = False
     lock_timer = 0
-    instruction_transition_ready_at = 0
+    instruction_transition_ready_at = (
+        pygame.time.get_ticks() + 1500
+    )
+    instruction_fist_armed = hand_controller is None
+    instruction_back_armed = True
     ai_think_end_time = 0
-    thumbs_up_exit = ThumbsUpExit()
+    victory_exit = VictoryExit()
+    instruction_back_gesture = VictoryExit()
 
     # 카드 날아가는 애니메이션 관리 리스트 ([x, y, target_x, target_y, progress, total_frames])
     flying_cards = []
@@ -192,14 +197,53 @@ def run_game(hand_controller=None):
         gesture = "None"
         if hand_controller is not None:
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
-            if thumbs_up_exit.update(is_detected, gesture, current_time):
-                break
+            if game_state in ("INSTRUCTION_1", "INSTRUCTION_2"):
+                if not is_detected or gesture != "Victory":
+                    instruction_back_gesture.update(
+                        False, "None", current_time
+                    )
+                    instruction_back_armed = True
+                elif instruction_back_armed:
+                    instruction_back = instruction_back_gesture.update(
+                        is_detected, gesture, current_time
+                    )
+                else:
+                    instruction_back_gesture.update(
+                        False, "None", current_time
+                    )
+                    instruction_back = False
+                victory_exit.update(False, "None", current_time)
+                if instruction_back:
+                    instruction_back_armed = False
+                    if game_state == "INSTRUCTION_2":
+                        game_state = "INSTRUCTION_1"
+                        instruction_transition_ready_at = current_time + 1500
+                        instruction_fist_armed = False
+                        gesture_locked = True
+                        lock_timer = current_time
+                    else:
+                        running = False
+            else:
+                instruction_back_gesture.update(
+                    False, "None", current_time
+                )
+                if victory_exit.update(
+                    is_detected, gesture, current_time
+                ):
+                    break
+            if (
+                game_state in ("INSTRUCTION_1", "INSTRUCTION_2")
+                and current_time >= instruction_transition_ready_at
+                and (not is_detected or gesture != "Fist")
+            ):
+                instruction_fist_armed = True
             if gesture in ["None", "Unknown"]:
                 gesture_locked = False
             elif gesture_locked and current_time - lock_timer > 1200:
                 gesture_locked = False
         else:
-            thumbs_up_exit.update(False, "None", current_time)
+            instruction_back_gesture.update(False, "None", current_time)
+            victory_exit.update(False, "None", current_time)
 
         # ==========================================
         # 1. 칠판 안내 1페이지 (게임 규칙)
@@ -217,15 +261,18 @@ def run_game(hand_controller=None):
                     ):
                         game_state = "INSTRUCTION_2"
                         instruction_transition_ready_at = current_time + 1500
+                        instruction_fist_armed = hand_controller is None
 
             if (
                 hand_controller is not None
                 and is_detected
                 and gesture == "Fist"
+                and instruction_fist_armed
                 and not gesture_locked
                 and current_time >= instruction_transition_ready_at
             ):
                 gesture_locked = True
+                instruction_fist_armed = False
                 lock_timer = current_time
                 game_state = "INSTRUCTION_2"
                 instruction_transition_ready_at = current_time + 1500
@@ -264,7 +311,7 @@ def run_game(hand_controller=None):
             prompt_text = (
                 "잠시 기다려 주세요..."
                 if current_time < instruction_transition_ready_at
-                else "스페이스바(Space) 또는 주먹(Fist)을 쥐면 조작법 안내로 넘어갑니다 [ 1 / 2 ]"
+                else "Space / 주먹: 다음 안내    |    ESC / V 모양 1초: 메뉴"
             )
             prompt_surf = font_main.render(prompt_text, True, YELLOW)
             if (current_time // 400) % 2 == 0:
@@ -295,7 +342,11 @@ def run_game(hand_controller=None):
                     running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        running = False
+                        game_state = "INSTRUCTION_1"
+                        instruction_transition_ready_at = current_time + 1500
+                        instruction_fist_armed = False
+                        gesture_locked = True
+                        lock_timer = current_time
                     elif (
                         event.key in (pygame.K_SPACE, pygame.K_RETURN)
                         and current_time >= instruction_transition_ready_at
@@ -303,15 +354,18 @@ def run_game(hand_controller=None):
                         game_state = "PLAYING"
                         turn_start_time = pygame.time.get_ticks()
                         instruction_transition_ready_at = current_time + 1500
+                        instruction_fist_armed = hand_controller is None
 
             if (
                 hand_controller is not None
                 and is_detected
                 and gesture == "Fist"
+                and instruction_fist_armed
                 and not gesture_locked
                 and current_time >= instruction_transition_ready_at
             ):
                 gesture_locked = True
+                instruction_fist_armed = False
                 lock_timer = current_time
                 game_state = "PLAYING"
                 turn_start_time = pygame.time.get_ticks()
@@ -352,7 +406,7 @@ def run_game(hand_controller=None):
             prompt_text = (
                 "잠시 기다려 주세요..."
                 if current_time < instruction_transition_ready_at
-                else "스페이스바(Space) 또는 주먹(Fist)을 쥐면 본격적인 게임이 시작됩니다! [ 2 / 2 ]"
+                else "Space / 주먹: 게임 시작    |    ESC / V 모양 1초: 이전 안내"
             )
             prompt_surf = font_main.render(prompt_text, True, YELLOW)
             if (current_time // 400) % 2 == 0:
@@ -722,7 +776,7 @@ def run_game(hand_controller=None):
         screen.blit(msg_surf, (35, HEIGHT - 212))
 
         if hand_controller is not None:
-            guide = "Point: 선택 | Fist: 내기 | Victory: 뽑기 | Palm: 패스 | 엄지 척 1초: 메뉴"
+            guide = "Point: 선택 | Fist: 내기 | Victory: 뽑기/메뉴(1초 유지) | Palm: 패스"
         else:
             guide = "←/→: 카드 선택 | ENTER: 카드 내기 | D: 뽑기 | P: 패스"
         g_surf = font_small.render(guide, True, GRAY)

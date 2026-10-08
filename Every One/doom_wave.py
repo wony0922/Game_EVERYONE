@@ -1,6 +1,6 @@
 import pygame
 from game_tutorial import show_tutorial
-from hand_exit import ThumbsUpExit
+from hand_exit import VictoryExit
 import random
 import math
 import os
@@ -1246,7 +1246,7 @@ def run_game(hand_controller=None):
         "fist_armed": False,     # 시작할 때 쥐고 있던 주먹으로는 바로 쏘지 않음
         "open_time": 0.0,        # 주먹을 편 상태로 지난 시간
     }
-    thumbs_up_exit = ThumbsUpExit()
+    victory_exit = VictoryExit()
 
     def hand_fist_pressed(dt):
         """주먹을 '새로 쥔 순간'에만 True (계속 쥐고 있으면 연사되지 않음)"""
@@ -1387,7 +1387,7 @@ def run_game(hand_controller=None):
         )
         if hand_controller is not None:
             detected, hand_x, _hand_y, gesture = hand_controller.get_state()
-            if thumbs_up_exit.update(detected, gesture, pygame.time.get_ticks()):
+            if victory_exit.update(detected, gesture, pygame.time.get_ticks()):
                 break
             if hand_input_allowed:
                 hand["detected"] = detected
@@ -1398,7 +1398,7 @@ def run_game(hand_controller=None):
                 hand["fist_armed"] = False
                 hand["open_time"] = 0.0
         elif state["over"]:
-            thumbs_up_exit.update(False, "None", pygame.time.get_ticks())
+            victory_exit.update(False, "None", pygame.time.get_ticks())
             hand["detected"] = False
             hand["gesture"] = "None"
             hand["fist_armed"] = False

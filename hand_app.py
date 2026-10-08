@@ -98,20 +98,7 @@ def detect_victory(lm):
             all(_dy(p, wrist) < 0.09 and _dx(p, wrist) < 0.06
                 for p in [ring, pinky]))
 
-def detect_thumbs_up(lm):
-    """엄지 척 (Thumbs Up): 엄지는 위로 펴고 나머지 손가락은 접힘"""
-    thumb_tip_length = math.hypot(lm[4].x - lm[2].x, lm[4].y - lm[2].y)
-    thumb_joint_length = math.hypot(lm[3].x - lm[2].x, lm[3].y - lm[2].y)
-    thumb_up = lm[4].y < lm[3].y and thumb_tip_length > thumb_joint_length * 1.1
-    other_fingers_curled = all(
-        lm[tip].y > lm[pip].y
-        for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]
-    )
-    return thumb_up and other_fingers_curled
-
-
 GESTURE_DEFINITIONS = [
-    ("엄지 척 (Thumbs Up)", detect_thumbs_up),
     ("펴진 손 (Open Palm)", detect_open_palm),
     ("주먹 (Fist)", detect_fist),
     ("가리키기 (Point)", detect_point),

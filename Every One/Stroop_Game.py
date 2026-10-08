@@ -9,7 +9,7 @@ import threading
 import pygame
 
 from game_tutorial import show_tutorial
-from hand_exit import ThumbsUpExit
+from hand_exit import VictoryExit
 
 
 WIDTH = 800
@@ -350,7 +350,7 @@ def run_game(hand_controller=None):
 
     next_round()
     running = True
-    thumbs_up_exit = ThumbsUpExit()
+    victory_exit = VictoryExit()
     try:
         while running:
             now = pygame.time.get_ticks()
@@ -358,10 +358,10 @@ def run_game(hand_controller=None):
                 is_detected, _hand_x, _hand_y, gesture = (
                     hand_controller.get_state()
                 )
-                if thumbs_up_exit.update(is_detected, gesture, now):
+                if victory_exit.update(is_detected, gesture, now):
                     break
             else:
-                thumbs_up_exit.update(False, "None", now)
+                victory_exit.update(False, "None", now)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:

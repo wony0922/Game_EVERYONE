@@ -1,10 +1,10 @@
-class ThumbsUpExit:
+class VictoryExit:
     def __init__(self, hold_time_ms=1000):
         self.hold_time_ms = hold_time_ms
         self.started_at = None
 
     def update(self, is_detected, gesture, current_time):
-        if not is_detected or gesture != "Thumbs Up":
+        if not is_detected or gesture != "Victory":
             self.started_at = None
             return False
 

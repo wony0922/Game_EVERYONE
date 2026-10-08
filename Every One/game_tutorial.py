@@ -1,10 +1,13 @@
 import pygame
+from hand_exit import VictoryExit
 
 
-TRANSITION_COOLDOWN_MS = 1500
+TRANSITION_COOLDOWN_MS = 3000
 
 
-def show_tutorial(screen, title, sections, hand_controller=None):
+def show_tutorial(
+    screen, title, sections, hand_controller=None, require_fist=False
+):
     width, height = screen.get_size()
     clock = pygame.time.Clock()
 
@@ -21,10 +24,26 @@ def show_tutorial(screen, title, sections, hand_controller=None):
 
     board = pygame.Rect(32, 28, width - 64, height - 56)
     running = True
+    entry_ready_at = pygame.time.get_ticks() + TRANSITION_COOLDOWN_MS
+    fist_armed = hand_controller is None
     transition_until = None
+    victory_exit = VictoryExit()
     while running:
         clock.tick(30)
         now = pygame.time.get_ticks()
+        is_detected = False
+        gesture = "None"
+        if hand_controller is not None:
+            is_detected, _hand_x, _hand_y, gesture = hand_controller.get_state()
+            if victory_exit.update(is_detected, gesture, now):
+                return False
+            if now >= entry_ready_at and (
+                not is_detected or gesture != "Fist"
+            ):
+                fist_armed = True
+        else:
+            victory_exit.update(False, "None", now)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
@@ -33,17 +52,23 @@ def show_tutorial(screen, title, sections, hand_controller=None):
                     return False
                 if (
                     transition_until is None
+                    and not require_fist
+                    and now >= entry_ready_at
                     and event.key in (pygame.K_SPACE, pygame.K_RETURN)
                 ):
                     transition_until = now + TRANSITION_COOLDOWN_MS
+                    fist_armed = False
 
         if (
             transition_until is None
             and hand_controller is not None
+            and now >= entry_ready_at
+            and fist_armed
+            and is_detected
+            and gesture == "Fist"
         ):
-            is_detected, _hand_x, _hand_y, gesture = hand_controller.get_state()
-            if is_detected and gesture == "Fist":
-                transition_until = now + TRANSITION_COOLDOWN_MS
+            transition_until = now + TRANSITION_COOLDOWN_MS
+            fist_armed = False
 
         if transition_until is not None and now >= transition_until:
             return True
@@ -76,11 +101,14 @@ def show_tutorial(screen, title, sections, hand_controller=None):
                 y += 31
             y += 12
 
-        prompt_text = (
-            "잠시 후 게임이 시작됩니다..."
-            if transition_until is not None
-            else "SPACE / ENTER / 주먹: 게임 시작    |    ESC: 메뉴"
-        )
+        if transition_until is not None:
+            prompt_text = "잠시 후 게임이 시작됩니다..."
+        elif now < entry_ready_at:
+            prompt_text = "안내를 읽어 주세요. 잠시 후 시작 입력이 활성화됩니다."
+        elif require_fist:
+            prompt_text = "주먹(Fist): 게임 시작    |    ESC / V 모양 1초: 메뉴"
+        else:
+            prompt_text = "SPACE / ENTER / 주먹: 시작    |    ESC / V 모양 1초: 메뉴"
         prompt = prompt_font.render(
             prompt_text,
             True,
@@ -92,7 +120,7 @@ def show_tutorial(screen, title, sections, hand_controller=None):
         )
         if hand_controller is not None:
             exit_hint = prompt_font.render(
-                "엄지 척을 1초 유지하면 메인 메뉴로 돌아갑니다",
+                "ESC / V 모양 1초: 메뉴로 돌아가기",
                 True,
                 (210, 220, 210),
             )
