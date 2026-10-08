@@ -54,6 +54,17 @@ def detect_victory(lm):
     ring_pinky_curled = all(lm[tip].y > lm[pip].y for tip, pip in [(16, 14), (20, 18)])
     return index_mid_extended and ring_pinky_curled
 
+def detect_thumbs_up(lm):
+    """엄지 척 (Thumbs Up): 엄지는 위로 펴고 나머지 손가락은 접힘"""
+    thumb_tip_length = math.hypot(lm[4].x - lm[2].x, lm[4].y - lm[2].y)
+    thumb_joint_length = math.hypot(lm[3].x - lm[2].x, lm[3].y - lm[2].y)
+    thumb_up = lm[4].y < lm[3].y and thumb_tip_length > thumb_joint_length * 1.1
+    other_fingers_curled = all(
+        lm[tip].y > lm[pip].y
+        for tip, pip in [(8, 6), (12, 10), (16, 14), (20, 18)]
+    )
+    return thumb_up and other_fingers_curled
+
 def detect_fist(lm):
     """주먹 (Fist): 네 손가락 모두 접혀 있음"""
     wrist = lm[0]
@@ -70,6 +81,7 @@ def detect_open_palm(lm):
 GESTURE_DEFINITIONS = [
     ("Point", detect_point),
     ("Victory", detect_victory),
+    ("Thumbs Up", detect_thumbs_up),
     ("Fist", detect_fist),
     ("Open Palm", detect_open_palm),
 ]

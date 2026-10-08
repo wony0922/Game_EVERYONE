@@ -4,6 +4,7 @@ import os
 import sys
 from hand_input import scale_hand_x
 from game_tutorial import show_tutorial
+from hand_exit import ThumbsUpExit
 
 # 상위 경로 모듈 검색 추가
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -246,9 +247,18 @@ def run_game(hand_controller=None):
     # 게임 루프
     # ======================================
 
+    thumbs_up_exit = ThumbsUpExit()
     while running:
 
         clock.tick(FPS)
+        is_detected = False
+        gesture = "None"
+        if hand_controller is not None:
+            is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
+        if thumbs_up_exit.update(
+            is_detected, gesture, pygame.time.get_ticks()
+        ):
+            break
 
 
         # ==================================
@@ -314,23 +324,20 @@ def run_game(hand_controller=None):
             # --------------------------------
 
             # 손 동작 인식으로 패들 위치 제어
-            if hand_controller is not None:
-                is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
+            if hand_controller is not None and is_detected:
+                # 손 X 좌표(0.0~1.0)를 패들 위치로 변환
+                target_x = int(
+                    scale_hand_x(hand_x) * WIDTH
+                    - PADDLE_WIDTH // 2
+                )
 
-                if is_detected:
-                    # 손 X 좌표(0.0~1.0)를 패들 위치로 변환
-                    target_x = int(
-                        scale_hand_x(hand_x) * WIDTH
-                        - PADDLE_WIDTH // 2
-                    )
+                # 부드러운 이동 (보간)
+                diff = target_x - paddle.x
+                paddle.x += int(diff * 0.5)
 
-                    # 부드러운 이동 (보간)
-                    diff = target_x - paddle.x
-                    paddle.x += int(diff * 0.5)
-
-                    # Fist(주먹) 제스처 → 방어 발동
-                    if gesture == "Fist":
-                        activate_defense()
+                # Fist(주먹) 제스처 → 방어 발동
+                if gesture == "Fist":
+                    activate_defense()
 
             # 키보드 입력 (보조/폴백)
             keys = pygame.key.get_pressed()

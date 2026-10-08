@@ -3,6 +3,7 @@ import random
 import os
 import sys
 from hand_input import scale_hand_x
+from hand_exit import ThumbsUpExit
 
 # 상위 경로 모듈 검색 추가
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -110,6 +111,7 @@ def run_game(hand_controller=None):
     lock_timer = 0
     instruction_transition_ready_at = 0
     ai_think_end_time = 0
+    thumbs_up_exit = ThumbsUpExit()
 
     # 카드 날아가는 애니메이션 관리 리스트 ([x, y, target_x, target_y, progress, total_frames])
     flying_cards = []
@@ -190,10 +192,14 @@ def run_game(hand_controller=None):
         gesture = "None"
         if hand_controller is not None:
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
+            if thumbs_up_exit.update(is_detected, gesture, current_time):
+                break
             if gesture in ["None", "Unknown"]:
                 gesture_locked = False
-            elif gesture_locked and current_time - lock_timer >= 1500:
+            elif gesture_locked and current_time - lock_timer > 1200:
                 gesture_locked = False
+        else:
+            thumbs_up_exit.update(False, "None", current_time)
 
         # ==========================================
         # 1. 칠판 안내 1페이지 (게임 규칙)
@@ -716,7 +722,7 @@ def run_game(hand_controller=None):
         screen.blit(msg_surf, (35, HEIGHT - 212))
 
         if hand_controller is not None:
-            guide = "Point: 카드 선택 | Fist: 카드 내기 | Victory: 카드 뽑기 | Palm: 패스"
+            guide = "Point: 선택 | Fist: 내기 | Victory: 뽑기 | Palm: 패스 | 엄지 척 1초: 메뉴"
         else:
             guide = "←/→: 카드 선택 | ENTER: 카드 내기 | D: 뽑기 | P: 패스"
         g_surf = font_small.render(guide, True, GRAY)

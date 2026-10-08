@@ -90,6 +90,16 @@ def show_tutorial(screen, title, sections, hand_controller=None):
             prompt,
             (width // 2 - prompt.get_width() // 2, board.bottom - 48),
         )
+        if hand_controller is not None:
+            exit_hint = prompt_font.render(
+                "엄지 척을 1초 유지하면 메인 메뉴로 돌아갑니다",
+                True,
+                (210, 220, 210),
+            )
+            screen.blit(
+                exit_hint,
+                (width // 2 - exit_hint.get_width() // 2, board.bottom - 80),
+            )
         pygame.display.flip()
 
     return True

@@ -8,6 +8,8 @@ import tempfile
 import threading
 import pygame
 
+from hand_exit import ThumbsUpExit
+
 # --- 레트로 픽셀 감성 팔레트 ---
 COLOR_OUTSIDE = (165, 200, 220)
 COLOR_TREE = (120, 160, 100)
@@ -423,11 +425,12 @@ def run_tutorial(screen, font_large, font_medium, font_small, hand_controller=No
             screen.blit(rule_surf, (80, y_offset))
             y_offset += 40
 
-        prompt_text = (
-            "잠시 후 게임이 시작됩니다..."
-            if transition_until is not None
-            else "▶ [SPACE] 또는 주먹(Fist)을 쥐면 게임 시작! (ESC: 메뉴)"
-        )
+        if transition_until is not None:
+            prompt_text = "잠시 후 게임이 시작됩니다..."
+        elif hand_controller is not None:
+            prompt_text = "▶ SPACE / 주먹: 시작 | 엄지 척 1초: 메뉴 | ESC: 메뉴"
+        else:
+            prompt_text = "▶ SPACE / ENTER: 게임 시작 | ESC: 메뉴"
         prompt_surf = font_medium.render(prompt_text, True, (150, 255, 150))
         screen.blit(prompt_surf, (1040 // 2 - prompt_surf.get_width() // 2, 500))
 
@@ -482,6 +485,7 @@ def run_game(hand_controller=None):
     space_press_count = 0
     turn_start_time = pygame.time.get_ticks()
     turn_unlocked_time = pygame.time.get_ticks()
+    thumbs_up_exit = ThumbsUpExit()
 
     if recognizer:
         recognizer.update_grammar(current_num)
@@ -532,6 +536,16 @@ def run_game(hand_controller=None):
         while running:
             clock.tick(30)
             current_time = pygame.time.get_ticks()
+            if hand_controller is not None:
+                hand_detected, _hand_x, _hand_y, gesture = (
+                    hand_controller.get_state()
+                )
+                if thumbs_up_exit.update(
+                    hand_detected, gesture, current_time
+                ):
+                    break
+            else:
+                thumbs_up_exit.update(False, "None", current_time)
 
             if not game_over and not game_clear and is_player_turn:
                 elapsed_sec = (current_time - turn_start_time) / 1000.0
