@@ -47,8 +47,14 @@ def main():
     title_font = pygame.font.Font(None, 70)
     info_font = pygame.font.Font(None, 30)
     small_font = pygame.font.Font(None, 24)
-    card_title_font = pygame.font.Font(None, 30)
-    card_info_font = pygame.font.Font(None, 19)
+    card_title_fonts = {
+        "large": pygame.font.Font(None, 36),
+        "small": pygame.font.Font(None, 25),
+    }
+    card_info_fonts = {
+        "large": pygame.font.Font(None, 19),
+        "small": pygame.font.Font(None, 15),
+    }
 
     hand_controller = None
     if HandController is not None:
@@ -69,25 +75,25 @@ def main():
         ("369 GAME", "숫자 대신 박수로\n369를 플레이하세요.", run_369_game),
         ("ONE CARD", "카드를 내고 먼저\n손패를 비우세요.", run_one_card_game),
     ]
-    card_width = 220
-    card_height = 130
-    card_gap = 20
-    card_columns = 3
-    card_start_x = (WIDTH - (card_width * card_columns + card_gap * (card_columns - 1))) // 2
-    card_start_y = 175
-    card_row_gap = 15
-    game_cards = [
-        pygame.Rect(
-            card_start_x + (index % card_columns) * (card_width + card_gap),
-            card_start_y + (index // card_columns) * (card_height + card_row_gap),
-            card_width,
-            card_height,
-        )
-        for index in range(len(games))
-    ]
+    carousel_position = 0.0
+    carousel_target = 0.0
+    visible_cards = []
 
     hand_input_block_until = 0
     HAND_GAME_RETURN_COOLDOWN_MS = 2500
+
+    def move_selection(direction):
+        nonlocal selected_game, carousel_target
+        selected_game = (selected_game + direction) % len(games)
+        carousel_target += direction
+
+    def select_game(index):
+        nonlocal selected_game, carousel_target
+        forward = (index - selected_game) % len(games)
+        backward = forward - len(games)
+        direction = forward if forward <= len(games) // 2 else backward
+        selected_game = index
+        carousel_target += direction
 
     def launch_selected_game():
         nonlocal hand_input_block_until
@@ -101,32 +107,41 @@ def main():
     running = True
     last_gesture_nav_time = 0
     GESTURE_NAV_COOLDOWN = 1
+    HAND_SCROLL_LEFT = 0.35
+    HAND_SCROLL_RIGHT = 0.65
 
     while running:
+        dt = clock.tick(FPS) / 1000.0
+        carousel_position += (carousel_target - carousel_position) * (
+            1 - pow(0.001, dt)
+        )
+        if abs(carousel_target - carousel_position) < 0.005:
+            carousel_position = carousel_target
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
-                    selected_game = (selected_game - 1) % len(games)
+                    move_selection(-1)
 
                 elif event.key == pygame.K_RIGHT:
-                    selected_game = (selected_game + 1) % len(games)
+                    move_selection(1)
 
                 elif event.key == pygame.K_RETURN:
                     launch_selected_game()
 
             elif event.type == pygame.MOUSEMOTION:
-                for index, card in enumerate(game_cards):
+                for index, card in visible_cards:
                     if card.collidepoint(event.pos):
-                        selected_game = index
+                        select_game(index)
                         break
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                for index, card in enumerate(game_cards):
+                for index, card in visible_cards:
                     if card.collidepoint(event.pos):
-                        selected_game = index
+                        select_game(index)
                         launch_selected_game()
                         break
 
@@ -139,20 +154,48 @@ def main():
         title = title_font.render("Every One", True, WHITE)
         screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 100))
 
-        # 게임 목록 카드
-        for index, (game_name, description, _run_game) in enumerate(games):
-            card = game_cards[index]
+        screen.set_clip(pygame.Rect(0, 0, WIDTH, HEIGHT))
+        carousel_slots = []
+        for index in range(len(games)):
+            offset = (index - carousel_position + len(games) / 2) % len(games) - len(games) / 2
+            carousel_slots.append((abs(offset), offset, index))
+
+        visible_slots = sorted(carousel_slots)[:3]
+        visible_cards = []
+        for _, offset, index in sorted(
+            visible_slots, key=lambda slot: slot[0], reverse=True
+        ):
             selected = index == selected_game
+            scale = 1.0 - min(1.0, abs(offset)) * 0.32
+            card_width = int(360 * scale)
+            card_height = int(250 * scale)
+            card = pygame.Rect(0, 0, card_width, card_height)
+            card.center = (
+                int(WIDTH // 2 + offset * 290),
+                315,
+            )
+            visible_cards.append((index, card))
+
             card_color = (42, 62, 86) if selected else (32, 36, 48)
             border_color = BLUE if selected else (75, 80, 95)
-            pygame.draw.rect(screen, card_color, card, border_radius=12)
-            pygame.draw.rect(screen, border_color, card, 3 if selected else 1, border_radius=12)
+            pygame.draw.rect(screen, card_color, card, border_radius=16)
+            pygame.draw.rect(
+                screen,
+                border_color,
+                card,
+                4 if selected else 2,
+                border_radius=16,
+            )
 
             title_color = BLUE if selected else WHITE
+            game_name, description, _run_game = games[index]
+            font_size = "large" if scale > 0.84 else "small"
+            card_title_font = card_title_fonts[font_size]
+            card_info_font = card_info_fonts[font_size]
             game_text = card_title_font.render(game_name, True, title_color)
             screen.blit(
                 game_text,
-                (card.centerx - game_text.get_width() // 2, card.y + 18),
+                (card.centerx - game_text.get_width() // 2, card.y + int(card_height * 0.2)),
             )
 
             for line_index, line in enumerate(description.splitlines()):
@@ -161,7 +204,7 @@ def main():
                     description_text,
                     (
                         card.centerx - description_text.get_width() // 2,
-                        card.y + 57 + line_index * 20,
+                        card.y + int(card_height * 0.48) + line_index * 22,
                     ),
                 )
 
@@ -171,13 +214,16 @@ def main():
                     select_text,
                     (
                         card.centerx - select_text.get_width() // 2,
-                        card.bottom - 27,
+                        card.bottom - 38,
                     ),
                 )
 
+        visible_cards.reverse()
+        screen.set_clip(None)
+
         # 조작법
         if hand_controller is not None:
-            ctrl_label = "POINT : SELECT    FIST : START    (ARROWS / CLICK OK)"
+            ctrl_label = "POINT: HOLD LEFT/RIGHT (1s/STEP)  |  FIST: START"
         else:
             ctrl_label = "LEFT / RIGHT : SELECT    ENTER / CLICK : START"
 
@@ -191,7 +237,7 @@ def main():
             info,
             (
                 WIDTH // 2 - info.get_width() // 2,
-                485
+                500
             )
         )
 
@@ -208,18 +254,25 @@ def main():
             if hand_input_blocked:
                 is_detected = False
 
-            if (
-                not hand_input_blocked
-                and is_detected
-                and now - last_gesture_nav_time > GESTURE_NAV_COOLDOWN
-            ):
+            if not hand_input_blocked and is_detected:
                 if gesture == "Point":
-                    target_game = min(int(scale_hand_x(hand_x) * len(games)), len(games) - 1)
-                    if target_game != selected_game:
-                        selected_game = target_game
+                    scaled_hand_x = scale_hand_x(hand_x)
+                    direction = (
+                        -1 if scaled_hand_x < HAND_SCROLL_LEFT
+                        else 1 if scaled_hand_x > HAND_SCROLL_RIGHT
+                        else 0
+                    )
+                    if (
+                        direction
+                        and now - last_gesture_nav_time >= GESTURE_NAV_COOLDOWN
+                    ):
+                        move_selection(direction)
                         last_gesture_nav_time = now
 
-                elif gesture == "Fist":
+                elif (
+                    gesture == "Fist"
+                    and now - last_gesture_nav_time > GESTURE_NAV_COOLDOWN
+                ):
                     last_gesture_nav_time = now
                     launch_selected_game()
 

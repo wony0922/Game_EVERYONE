@@ -59,7 +59,7 @@ HAND_CONNECTIONS_SET = frozenset(
 )
 
 # ══════════════════════════════════════════════════════════
-#  기본 동작 정의 (4종)
+#  기본 동작 정의 (5종)
 # ══════════════════════════════════════════════════════════
 
 def _dy(a, b):
@@ -97,7 +97,6 @@ def detect_victory(lm):
     return (_dy(index, wrist) > 0.1 and _dy(middle, wrist) > 0.1 and
             all(_dy(p, wrist) < 0.09 and _dx(p, wrist) < 0.06
                 for p in [ring, pinky]))
-
 
 GESTURE_DEFINITIONS = [
     ("펴진 손 (Open Palm)", detect_open_palm),

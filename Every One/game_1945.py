@@ -4,6 +4,8 @@ import random
 import sys
 import pygame
 from hand_input import scale_hand_x
+from game_tutorial import show_tutorial
+from hand_exit import VictoryExit
 
 # 상위 경로 모듈 검색 추가 (hand_controller 불러오기용)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -312,6 +314,27 @@ def run_game(hand_controller=None):
     font_small = pygame.font.SysFont("malgungothic", 16, bold=True)
     font_item = pygame.font.SysFont("malgungothic", 18, bold=True)
 
+    if not show_tutorial(
+        screen,
+        "1945 AIR COMBAT - 규칙 및 조작법",
+        [
+            ("게임 목표", [
+                "적을 격추하며 살아남으세요. 5분 후 보스가 등장합니다.",
+                "목숨을 모두 잃기 전에 보스를 물리치면 승리합니다.",
+            ]),
+            ("조작 방법", [
+                "손 좌우 이동 또는 ← / →, A / D: 비행기 이동",
+                "비행기는 자동으로 발사합니다.",
+                "주먹(Fist) 또는 Space: 폭탄 사용 | ESC: 메뉴",
+                "아이템을 획득하면 폭탄·방어막·드론 효과를 얻습니다.",
+            ]),
+        ],
+        hand_controller,
+    ):
+        if own_controller and hand_controller is not None:
+            hand_controller.stop()
+        return
+
     player = Player()
     bullets = []
     enemy_bullets = []
@@ -332,6 +355,7 @@ def run_game(hand_controller=None):
     fist_armed = True
     fist_rearm_time = 0.5
     last_fist_time = 0
+    victory_exit = VictoryExit()
 
     def trigger_bomb():
         nonlocal bomb_flash_until, score, game_clear
@@ -372,6 +396,8 @@ def run_game(hand_controller=None):
         # --- 모션 인식 연동 ---
         if hand_controller is not None:
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
+            if victory_exit.update(is_detected, gesture, current_time):
+                break
             if is_detected and not game_over and not game_clear:
                 # 1) 손 위치에 따라 플레이어 X 위치 부드럽게 이동
                 target_x = int(scale_hand_x(hand_x) * WIDTH)

@@ -8,6 +8,9 @@ import threading
 
 import pygame
 
+from game_tutorial import show_tutorial
+from hand_exit import VictoryExit
+
 
 WIDTH = 800
 HEIGHT = 600
@@ -277,6 +280,24 @@ def run_game(hand_controller=None):
     body_font = _font(30)
     small_font = _font(22)
 
+    if not show_tutorial(
+        screen,
+        "STROOP COLOR - 규칙 및 조작법",
+        [
+            ("게임 목표", [
+                "화면에 적힌 글자가 아니라 글자의 실제 색깔을 맞히세요.",
+                "제한 시간 안에 정답을 맞히고, 목숨 5개를 지키세요.",
+            ]),
+            ("조작 방법", [
+                "마이크에 색깔 이름을 말하거나 해당 숫자 키를 누르세요.",
+                "1 빨강   2 파랑   3 노랑   4 초록   5 보라   6 주황",
+                "음성 또는 키 입력 제한 시간: 1.5초 | ESC: 메뉴",
+            ]),
+        ],
+        hand_controller,
+    ):
+        return
+
     recognizer = None
     setup_error = None
     try:
@@ -329,9 +350,19 @@ def run_game(hand_controller=None):
 
     next_round()
     running = True
+    victory_exit = VictoryExit()
     try:
         while running:
             now = pygame.time.get_ticks()
+            if hand_controller is not None:
+                is_detected, _hand_x, _hand_y, gesture = (
+                    hand_controller.get_state()
+                )
+                if victory_exit.update(is_detected, gesture, now):
+                    break
+            else:
+                victory_exit.update(False, "None", now)
+
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False

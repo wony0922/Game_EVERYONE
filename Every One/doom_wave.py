@@ -1,4 +1,6 @@
 import pygame
+from game_tutorial import show_tutorial
+from hand_exit import VictoryExit
 import random
 import math
 import os
@@ -1191,6 +1193,26 @@ def run_game(hand_controller=None):
     big_font = pygame.font.Font(None, 72)
     small_font = pygame.font.Font(None, 25)
 
+    if not show_tutorial(
+        screen,
+        "DOOM WAVE - 규칙 및 조작법",
+        [
+            ("게임 목표", [
+                "60초 동안 살아남으세요. 목숨은 5개입니다.",
+                "적을 7초 안에 처치하지 못하면 목숨이 줄어듭니다.",
+            ]),
+            ("조작 방법", [
+                "손을 좌우로 이동하거나 ← / → 방향키: 시점 회전",
+                "주먹(Fist), 클릭, Space 또는 Enter: 화면 중앙에 발사",
+                "게임 오버 후 Enter 또는 주먹: 다시 시작 | ESC: 메뉴",
+            ]),
+        ],
+        hand_controller,
+    ):
+        if own_controller and hand_controller is not None:
+            hand_controller.stop()
+        return
+
     renderer = Renderer()
     gun = Revolver()
     fire_light = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
@@ -1224,6 +1246,7 @@ def run_game(hand_controller=None):
         "fist_armed": False,     # 시작할 때 쥐고 있던 주먹으로는 바로 쏘지 않음
         "open_time": 0.0,        # 주먹을 편 상태로 지난 시간
     }
+    victory_exit = VictoryExit()
 
     def hand_fist_pressed(dt):
         """주먹을 '새로 쥔 순간'에만 True (계속 쥐고 있으면 연사되지 않음)"""
@@ -1362,11 +1385,20 @@ def run_game(hand_controller=None):
             not state["over"]
             or state["over_time"] >= GAME_OVER_HAND_COOLDOWN
         )
-        if hand_controller is not None and hand_input_allowed:
+        if hand_controller is not None:
             detected, hand_x, _hand_y, gesture = hand_controller.get_state()
-            hand["detected"] = detected
-            hand["gesture"] = gesture if detected else "None"
+            if victory_exit.update(detected, gesture, pygame.time.get_ticks()):
+                break
+            if hand_input_allowed:
+                hand["detected"] = detected
+                hand["gesture"] = gesture if detected else "None"
+            else:
+                hand["detected"] = False
+                hand["gesture"] = "None"
+                hand["fist_armed"] = False
+                hand["open_time"] = 0.0
         elif state["over"]:
+            victory_exit.update(False, "None", pygame.time.get_ticks())
             hand["detected"] = False
             hand["gesture"] = "None"
             hand["fist_armed"] = False

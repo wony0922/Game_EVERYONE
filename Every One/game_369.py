@@ -8,6 +8,8 @@ import tempfile
 import threading
 import pygame
 
+from hand_exit import VictoryExit
+
 # --- 레트로 픽셀 감성 팔레트 ---
 COLOR_OUTSIDE = (165, 200, 220)
 COLOR_TREE = (120, 160, 100)
@@ -368,21 +370,58 @@ def draw_pixel_cafe_scene(screen):
     pygame.draw.rect(screen, COLOR_MY_HAIR, (165, 310, 80, 75))
 
 
-def run_tutorial(screen, font_large, font_medium, font_small):
+def run_tutorial(screen, font_large, font_medium, font_small, hand_controller=None):
     """게임 시작 전 규칙과 조작법을 알려주는 블랙보드 스타일 튜토리얼 화면"""
     clock = pygame.time.Clock()
     running = True
+    entry_ready_at = pygame.time.get_ticks() + 1500
+    fist_armed = hand_controller is None
+    transition_until = None
+    victory_exit = VictoryExit()
 
     while running:
         clock.tick(30)
+        now = pygame.time.get_ticks()
+        is_detected = False
+        gesture = "None"
+        if hand_controller is not None:
+            is_detected, _hand_x, _hand_y, gesture = hand_controller.get_state()
+            if victory_exit.update(is_detected, gesture, now):
+                return False
+            if now >= entry_ready_at and (
+                not is_detected or gesture != "Fist"
+            ):
+                fist_armed = True
+        else:
+            victory_exit.update(False, "None", now)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return False
-                if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
-                    return True
+                if (
+                    transition_until is None
+                    and now >= entry_ready_at
+                    and event.key in (pygame.K_SPACE, pygame.K_RETURN)
+                ):
+                    transition_until = now + 1500
+                    fist_armed = False
+
+        if (
+            transition_until is None
+            and hand_controller is not None
+            and now >= entry_ready_at
+            and fist_armed
+            and is_detected
+            and gesture == "Fist"
+        ):
+            transition_until = now + 1500
+            fist_armed = False
+
+        if transition_until is not None and now >= transition_until:
+            return True
 
         # 블랙보드 배경 렌더링
         screen.fill((30, 50, 40))
@@ -410,7 +449,15 @@ def run_tutorial(screen, font_large, font_medium, font_small):
             screen.blit(rule_surf, (80, y_offset))
             y_offset += 40
 
-        prompt_surf = font_medium.render("▶ [SPACE] 또는 [ENTER]를 누르면 게임이 시작됩니다! (ESC: 메뉴)", True, (150, 255, 150))
+        if transition_until is not None:
+            prompt_text = "잠시 후 게임이 시작됩니다..."
+        elif now < entry_ready_at:
+            prompt_text = "안내를 읽어 주세요. 잠시 후 시작 입력이 활성화됩니다."
+        elif hand_controller is not None:
+            prompt_text = "▶ SPACE / 주먹: 시작 | ESC / V 모양 1초: 메뉴"
+        else:
+            prompt_text = "▶ SPACE / ENTER: 게임 시작 | ESC: 메뉴"
+        prompt_surf = font_medium.render(prompt_text, True, (150, 255, 150))
         screen.blit(prompt_surf, (1040 // 2 - prompt_surf.get_width() // 2, 500))
 
         pygame.display.flip()
@@ -440,7 +487,9 @@ def run_game(hand_controller=None):
         font_speech = pygame.font.Font(None, 32)
 
     # 게임 시작 전 튜토리얼 먼저 실행
-    if not run_tutorial(screen, font_large, font_medium, font_small):
+    if not run_tutorial(
+        screen, font_large, font_medium, font_small, hand_controller
+    ):
         return
 
     recognizer = None
@@ -462,6 +511,7 @@ def run_game(hand_controller=None):
     space_press_count = 0
     turn_start_time = pygame.time.get_ticks()
     turn_unlocked_time = pygame.time.get_ticks()
+    victory_exit = VictoryExit()
 
     if recognizer:
         recognizer.update_grammar(current_num)
@@ -512,6 +562,16 @@ def run_game(hand_controller=None):
         while running:
             clock.tick(30)
             current_time = pygame.time.get_ticks()
+            if hand_controller is not None:
+                hand_detected, _hand_x, _hand_y, gesture = (
+                    hand_controller.get_state()
+                )
+                if victory_exit.update(
+                    hand_detected, gesture, current_time
+                ):
+                    break
+            else:
+                victory_exit.update(False, "None", current_time)
 
             if not game_over and not game_clear and is_player_turn:
                 elapsed_sec = (current_time - turn_start_time) / 1000.0
