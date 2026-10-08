@@ -1,4 +1,5 @@
 import pygame
+from font_utils import get_font
 from hand_exit import VictoryExit
 
 
@@ -11,16 +12,10 @@ def show_tutorial(
     width, height = screen.get_size()
     clock = pygame.time.Clock()
 
-    try:
-        title_font = pygame.font.SysFont("malgungothic", 40, bold=True)
-        heading_font = pygame.font.SysFont("malgungothic", 25, bold=True)
-        body_font = pygame.font.SysFont("malgungothic", 21)
-        prompt_font = pygame.font.SysFont("malgungothic", 20, bold=True)
-    except pygame.error:
-        title_font = pygame.font.Font(None, 42)
-        heading_font = pygame.font.Font(None, 28)
-        body_font = pygame.font.Font(None, 24)
-        prompt_font = pygame.font.Font(None, 22)
+    title_font = get_font(40, bold=True)
+    heading_font = get_font(25, bold=True)
+    body_font = get_font(21)
+    prompt_font = get_font(20, bold=True)
 
     board = pygame.Rect(32, 28, width - 64, height - 56)
     running = True

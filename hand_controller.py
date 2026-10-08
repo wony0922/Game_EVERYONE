@@ -12,6 +12,7 @@ import time
 import math
 import threading
 import pygame
+from camera_utils import open_camera
 
 # ══════════════════════════════════════════════════════════
 #  경로 및 기본 설정
@@ -192,11 +193,7 @@ class HandController:
             self.running = False
             return
 
-        cap = cv2.VideoCapture(self.cam_index, cv2.CAP_DSHOW)
-        if not cap.isOpened():
-            cap = cv2.VideoCapture(self.cam_index, cv2.CAP_MSMF)
-        if not cap.isOpened():
-            cap = cv2.VideoCapture(self.cam_index)
+        cap = open_camera(self.cam_index, width=640, height=480)
 
         if not cap.isOpened():
             print(f"[HandController 에러] 카메라를 열 수 없습니다 (index={self.cam_index})")

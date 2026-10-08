@@ -3,6 +3,7 @@ import os
 import random
 import sys
 import pygame
+from font_utils import get_font
 from hand_input import scale_hand_x
 from game_tutorial import show_tutorial
 from hand_exit import VictoryExit
@@ -309,10 +310,10 @@ def run_game(hand_controller=None):
     pygame.display.set_caption("Every One - 1945 Air Combat")
     clock = pygame.time.Clock()
 
-    font_large = pygame.font.SysFont("malgungothic", 42, bold=True)
-    font_medium = pygame.font.SysFont("malgungothic", 22, bold=True)
-    font_small = pygame.font.SysFont("malgungothic", 16, bold=True)
-    font_item = pygame.font.SysFont("malgungothic", 18, bold=True)
+    font_large = get_font(42, bold=True)
+    font_medium = get_font(22, bold=True)
+    font_small = get_font(16, bold=True)
+    font_item = get_font(18, bold=True)
 
     if not show_tutorial(
         screen,

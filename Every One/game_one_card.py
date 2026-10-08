@@ -1,4 +1,5 @@
 import pygame
+from font_utils import get_font
 import random
 import os
 import sys
@@ -69,13 +70,13 @@ def run_game(hand_controller=None):
     pygame.display.set_caption("Every One - One Card Deluxe")
     clock = pygame.time.Clock()
 
-    font_title = pygame.font.SysFont("malgungothic", 26, bold=True)
-    font_main = pygame.font.SysFont("malgungothic", 18, bold=True)
-    font_card_num = pygame.font.SysFont("malgungothic", 24, bold=True)
-    font_card_suit = pygame.font.SysFont("malgungothic", 32, bold=True)
-    font_small = pygame.font.SysFont("malgungothic", 15, bold=True)
-    font_board = pygame.font.SysFont("malgungothic", 18, bold=True)
-    font_board_title = pygame.font.SysFont("malgungothic", 26, bold=True)
+    font_title = get_font(26, bold=True)
+    font_main = get_font(18, bold=True)
+    font_card_num = get_font(24, bold=True)
+    font_card_suit = get_font(32, bold=True)
+    font_small = get_font(15, bold=True)
+    font_board = get_font(18, bold=True)
+    font_board_title = get_font(26, bold=True)
 
     game_state = "INSTRUCTION_1"
 

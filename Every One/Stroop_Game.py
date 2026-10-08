@@ -7,6 +7,7 @@ import tempfile
 import threading
 
 import pygame
+from font_utils import get_font
 
 from game_tutorial import show_tutorial
 from hand_exit import VictoryExit
@@ -128,12 +129,14 @@ def _create_vosk_model_access_path(model_path):
 class VoiceRecognizer:
     def __init__(self):
         try:
+            from voice_dependencies import ensure_voice_dependencies
+
+            ensure_voice_dependencies()
             import sounddevice
             from vosk import KaldiRecognizer, Model
-        except ImportError as error:
+        except (ImportError, RuntimeError) as error:
             raise RuntimeError(
-                "음성인식 패키지가 없습니다. 다음 명령으로 설치해 주세요:\n"
-                "py -3.14 -m pip install vosk sounddevice"
+                "음성인식 패키지 준비에 실패했습니다:\n{}".format(error)
             ) from error
 
         model_path = _find_model_path()
@@ -263,7 +266,7 @@ class VoiceRecognizer:
 
 
 def _font(size, bold=False):
-    return pygame.font.SysFont("malgungothic", size, bold=bold)
+    return get_font(size, bold=bold)
 
 
 def _draw_centered(screen, font, text, color, y):

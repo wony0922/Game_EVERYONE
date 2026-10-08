@@ -1,4 +1,5 @@
 import pygame
+from font_utils import get_font
 import random
 import os
 import sys
@@ -97,15 +98,8 @@ def run_game(hand_controller=None):
 
     clock = pygame.time.Clock()
 
-    font = pygame.font.Font(
-        None,
-        40
-    )
-
-    big_font = pygame.font.Font(
-        None,
-        80
-    )
+    font = get_font(40)
+    big_font = get_font(80)
 
     if not show_tutorial(
         screen,

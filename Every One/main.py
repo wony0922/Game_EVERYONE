@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import pygame
+from font_utils import get_font
 from hand_input import scale_hand_x
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -44,16 +45,16 @@ def main():
     pygame.display.set_caption("Every One")
     clock = pygame.time.Clock()
 
-    title_font = pygame.font.Font(None, 70)
-    info_font = pygame.font.Font(None, 30)
-    small_font = pygame.font.Font(None, 24)
+    title_font = get_font(70)
+    info_font = get_font(30)
+    small_font = get_font(24)
     card_title_fonts = {
-        "large": pygame.font.Font(None, 36),
-        "small": pygame.font.Font(None, 25),
+        "large": get_font(36),
+        "small": get_font(25),
     }
     card_info_fonts = {
-        "large": pygame.font.Font(None, 19),
-        "small": pygame.font.Font(None, 15),
+        "large": get_font(19),
+        "small": get_font(15),
     }
 
     hand_controller = None

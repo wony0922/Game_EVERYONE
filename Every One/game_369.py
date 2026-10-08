@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import pygame
+from font_utils import get_font
 
 from hand_exit import VictoryExit
 
@@ -188,12 +189,14 @@ def _create_vosk_model_access_path(model_path):
 class VoiceRecognizer:
     def __init__(self):
         try:
+            from voice_dependencies import ensure_voice_dependencies
+
+            ensure_voice_dependencies()
             import sounddevice
             from vosk import KaldiRecognizer, Model
-        except ImportError as error:
+        except (ImportError, RuntimeError) as error:
             raise RuntimeError(
-                "음성인식 패키지가 없습니다. 다음 명령으로 설치해 주세요:\n"
-                "py -3.14 -m pip install vosk sounddevice"
+                "음성인식 패키지 준비에 실패했습니다:\n{}".format(error)
             ) from error
 
         model_path = _find_model_path()
@@ -473,18 +476,11 @@ def run_game(hand_controller=None):
     pygame.display.set_caption("Every One - 369 Mini Game")
     clock = pygame.time.Clock()
 
-    try:
-        font_large = pygame.font.SysFont("malgungothic", 42, bold=True)
-        font_timer = pygame.font.SysFont("malgungothic", 50, bold=True)
-        font_medium = pygame.font.SysFont("malgungothic", 20, bold=True)
-        font_small = pygame.font.SysFont("malgungothic", 17, bold=True)
-        font_speech = pygame.font.SysFont("malgungothic", 28, bold=True)
-    except:
-        font_large = pygame.font.Font(None, 48)
-        font_timer = pygame.font.Font(None, 56)
-        font_medium = pygame.font.Font(None, 24)
-        font_small = pygame.font.Font(None, 20)
-        font_speech = pygame.font.Font(None, 32)
+    font_large = get_font(42, bold=True)
+    font_timer = get_font(50, bold=True)
+    font_medium = get_font(20, bold=True)
+    font_small = get_font(17, bold=True)
+    font_speech = get_font(28, bold=True)
 
     # 게임 시작 전 튜토리얼 먼저 실행
     if not run_tutorial(

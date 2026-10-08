@@ -22,6 +22,9 @@ import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
 from datetime import datetime
+from camera_utils import enumerate_cameras as enumerate_platform_cameras
+from camera_utils import open_camera as open_platform_camera
+from ui_font import get_tk_font_family
 
 # ══════════════════════════════════════════════════════════
 #  경로 설정
@@ -182,21 +185,8 @@ def recognize_gesture(lm_list):
 # ══════════════════════════════════════════════════════════
 
 def open_camera(index=0):
-    """사용 가능한 카메라를 다양한 백엔드로 열어 깨끗한 스트림을 반환합니다."""
-    # 1. DirectShow 시도
-    cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    # 2. Media Foundation 시도 (USB 외장 웹캠 인식 지원)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(index, cv2.CAP_MSMF)
-    # 3. 기본 백엔드 시도
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(index)
-    
-    if cap.isOpened():
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        for _ in range(5):
-            cap.read()
+    cap = open_platform_camera(index)
+    if cap is not None and cap.isOpened():
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         print(f"[카메라 {index}] 연결 완료 (해상도: {w}x{h})")
@@ -204,19 +194,7 @@ def open_camera(index=0):
 
 
 def enumerate_cameras(max_check=6):
-    """사용 가능한 카메라 목록 반환 (외장 카메라 탐색 범위 확대)."""
-    available = []
-    for i in range(max_check):
-        cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
-        if not cap.isOpened():
-            cap = cv2.VideoCapture(i, cv2.CAP_MSMF)
-
-        if cap.isOpened():
-            ret, _ = cap.read()
-            if ret:
-                available.append(i)
-            cap.release()
-    return available if available else [0]
+    return enumerate_platform_cameras(max_check)
 
 
 # ══════════════════════════════════════════════════════════
@@ -256,6 +234,7 @@ class LearningModal:
     def show(self):
         """모달을 표시하고 사용자 입력을 기다림."""
         self.root = tk.Tk()
+        font_family = get_tk_font_family(self.root)
         self.root.title("학습 모드 – 동작 확인")
         self.root.configure(bg="#1a1a2e")
         self.root.resizable(False, False)
@@ -263,7 +242,7 @@ class LearningModal:
 
         # ── 제목 ──
         title = tk.Label(self.root, text="이 동작은 무엇인가요?",
-                         font=("맑은 고딕", 16, "bold"), fg="#e0e0e0", bg="#1a1a2e")
+                         font=(font_family, 16, "bold"), fg="#e0e0e0", bg="#1a1a2e")
         title.pack(pady=(16, 8))
 
         # ── 캡처된 이미지 ──
@@ -278,7 +257,7 @@ class LearningModal:
         # ── AI 인식 결과 ──
         det_label = tk.Label(self.root,
                              text=f"AI 인식 결과: {self.detected_gesture}",
-                             font=("맑은 고딕", 11), fg="#90caf9", bg="#1a1a2e")
+                             font=(font_family, 11), fg="#90caf9", bg="#1a1a2e")
         det_label.pack(pady=(0, 12))
 
         # ── 동작 선택 버튼 프레임 ──
@@ -291,7 +270,7 @@ class LearningModal:
         col, row = 0, 0
         for name in all_names:
             btn = tk.Button(btn_frame, text=name, width=20,
-                            font=("맑은 고딕", 10),
+                            font=(font_family, 10),
                             fg="#e0e0e0", bg="#2a2a4a", activebackground="#4a4a7a",
                             relief="flat", bd=0, cursor="hand2",
                             command=lambda n=name: self._select(n))
@@ -305,7 +284,7 @@ class LearningModal:
 
         # 기타 버튼
         btn_other = tk.Button(btn_frame, text="✏️ 기타 (새 동작)", width=20,
-                              font=("맑은 고딕", 10),
+                              font=(font_family, 10),
                               fg="#a5d6a7", bg="#1b3a1b", activebackground="#2d5a2d",
                               relief="flat", bd=0, cursor="hand2",
                               command=self._on_other)
@@ -313,7 +292,7 @@ class LearningModal:
 
         # 재시도 버튼
         btn_retry = tk.Button(btn_frame, text="🔄 재시도", width=20,
-                              font=("맑은 고딕", 10),
+                              font=(font_family, 10),
                               fg="#ffd54f", bg="#3a3000", activebackground="#5a4a00",
                               relief="flat", bd=0, cursor="hand2",
                               command=self._on_retry)
@@ -325,7 +304,7 @@ class LearningModal:
         # ── 기타 입력 영역 (숨김) ──
         self.custom_frame = tk.Frame(self.root, bg="#1a1a2e")
 
-        self.custom_entry = tk.Entry(self.custom_frame, font=("맑은 고딕", 11),
+        self.custom_entry = tk.Entry(self.custom_frame, font=(font_family, 11),
                                      bg="#2a2a4a", fg="#e0e0e0",
                                      insertbackground="#e0e0e0",
                                      relief="flat", bd=2)
@@ -333,7 +312,7 @@ class LearningModal:
         self.custom_entry.bind("<Return>", lambda e: self._confirm_custom())
 
         btn_confirm = tk.Button(self.custom_frame, text="확인",
-                                font=("맑은 고딕", 10, "bold"),
+                                font=(font_family, 10, "bold"),
                                 fg="#fff", bg="#6c63ff", activebackground="#8a7fff",
                                 relief="flat", bd=0, cursor="hand2",
                                 command=self._confirm_custom)
