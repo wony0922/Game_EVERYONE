@@ -12,11 +12,9 @@ if PARENT_DIR not in sys.path:
 from pong import run_game
 from doom_wave import run_game as run_doom_wave
 from Stroop_Game import run_game as run_stroop_game
-
-try:
-    from hand_controller import HandController
-except ImportError:
-    HandController = None
+from game_1945 import run_game as run_1945_game
+from game_369 import run_game as run_369_game
+from game_one_card import run_game as run_one_card_game
 
 try:
     from hand_controller import HandController
@@ -64,8 +62,8 @@ def main():
     title_font = pygame.font.Font(None, 70)
     info_font = pygame.font.Font(None, 30)
     small_font = pygame.font.Font(None, 24)
-    card_title_font = pygame.font.Font(None, 38)
-    card_info_font = pygame.font.Font(None, 23)
+    card_title_font = pygame.font.Font(None, 30)
+    card_info_font = pygame.font.Font(None, 19)
 
     # HandController 생성 (카메라 & 손 동작 인식)
     hand_controller = None
@@ -84,17 +82,22 @@ def main():
     games = [
         ("PONG", "손으로 패들을 움직여\n공을 받아내세요.", run_game),
         ("DOOM WAVE", "시점을 돌리고 주먹을 쥐어\n적을 처치하세요.", run_doom_wave),
+        ("1945 AIR COMBAT", "비행기를 조종해 적을\n물리치세요.", run_1945_game),
         ("STROOP COLOR", "글자가 아닌 글자의 색을\n맞히는 게임입니다.", run_stroop_game),
+        ("369 GAME", "숫자 대신 박수로\n369를 플레이하세요.", run_369_game),
+        ("ONE CARD", "카드를 내고 먼저\n손패를 비우세요.", run_one_card_game),
     ]
     card_width = 220
-    card_height = 210
+    card_height = 130
     card_gap = 20
-    card_start_x = (WIDTH - (card_width * len(games) + card_gap * (len(games) - 1))) // 2
-    card_y = 220
+    card_columns = 3
+    card_start_x = (WIDTH - (card_width * card_columns + card_gap * (card_columns - 1))) // 2
+    card_start_y = 175
+    card_row_gap = 15
     game_cards = [
         pygame.Rect(
-            card_start_x + index * (card_width + card_gap),
-            card_y,
+            card_start_x + (index % card_columns) * (card_width + card_gap),
+            card_start_y + (index // card_columns) * (card_height + card_row_gap),
             card_width,
             card_height,
         )
@@ -200,7 +203,7 @@ def main():
             game_text = card_title_font.render(game_name, True, title_color)
             screen.blit(
                 game_text,
-                (card.centerx - game_text.get_width() // 2, card.y + 36),
+                (card.centerx - game_text.get_width() // 2, card.y + 18),
             )
 
             for line_index, line in enumerate(description.splitlines()):
@@ -209,7 +212,7 @@ def main():
                     description_text,
                     (
                         card.centerx - description_text.get_width() // 2,
-                        card.y + 92 + line_index * 30,
+                        card.y + 57 + line_index * 20,
                     ),
                 )
 
@@ -219,7 +222,7 @@ def main():
                     select_text,
                     (
                         card.centerx - select_text.get_width() // 2,
-                        card.bottom - 42,
+                        card.bottom - 27,
                     ),
                 )
 
@@ -239,7 +242,7 @@ def main():
             info,
             (
                 WIDTH // 2 - info.get_width() // 2,
-                470
+                485
             )
         )
 
