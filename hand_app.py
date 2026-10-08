@@ -128,7 +128,6 @@ def save_custom_gestures(gestures):
 
 
 custom_gestures = load_custom_gestures()
-# 각 항목: { "name": str, "landmarks": [ {x, y, z}, ... ] }
 
 
 def landmark_distance(lm_a, lm_b):
@@ -180,12 +179,17 @@ def recognize_gesture(lm_list):
 
 
 # ══════════════════════════════════════════════════════════
-#  카메라 열거
+#  카메라 열거 및 백엔드 오픈 (USB 카메라 지원 개선)
 # ══════════════════════════════════════════════════════════
 
 def open_camera(index=0):
-    """사용 가능한 카메라를 네이티브 1280x720으로 열어 깨끗한 스트림을 반환합니다."""
+    """사용 가능한 카메라를 다양한 백엔드로 열어 깨끗한 스트림을 반환합니다."""
+    # 1. DirectShow 시도
     cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    # 2. Media Foundation 시도 (USB 외장 웹캠 인식 지원)
+    if not cap.isOpened():
+        cap = cv2.VideoCapture(index, cv2.CAP_MSMF)
+    # 3. 기본 백엔드 시도
     if not cap.isOpened():
         cap = cv2.VideoCapture(index)
     
@@ -200,11 +204,14 @@ def open_camera(index=0):
     return cap
 
 
-def enumerate_cameras(max_check=3):
-    """사용 가능한 카메라 목록 반환."""
+def enumerate_cameras(max_check=6):
+    """사용 가능한 카메라 목록 반환 (외장 카메라 탐색 범위 확대)."""
     available = []
     for i in range(max_check):
         cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(i, cv2.CAP_MSMF)
+
         if cap.isOpened():
             ret, _ = cap.read()
             if ret:
@@ -244,8 +251,8 @@ class LearningModal:
     def __init__(self, captured_frame, detected_gesture, lm_list):
         self.captured_frame = captured_frame
         self.detected_gesture = detected_gesture
-        self.lm_list = lm_list  # NormalizedLandmark 리스트 또는 None
-        self.result = None      # 선택된 동작 이름 또는 "__RETRY__"
+        self.lm_list = lm_list
+        self.result = None
 
     def show(self):
         """모달을 표시하고 사용자 입력을 기다림."""
@@ -411,20 +418,13 @@ def save_photo(frame, gesture_name):
 # ══════════════════════════════════════════════════════════
 
 def main():
-    # 모델 파일 확인
     if not os.path.exists(MODEL_PATH):
         print(f"[오류] 모델 파일이 없습니다: {MODEL_PATH}")
-        print("다음 명령으로 다운로드하세요:")
-        print("  python -c \"import urllib.request; urllib.request.urlretrieve("
-              "'https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
-              "hand_landmarker/float16/latest/hand_landmarker.task', "
-              "'hand_landmarker.task')\"")
         return
 
-    # 카메라 탐색
     cameras = enumerate_cameras()
     cam_idx = 0
-    print(f"[카메라] 사용 가능: {cameras}")
+    print(f"[카메라] 사용 가능 탐색 결과: {cameras}")
 
     cap = open_camera(cameras[cam_idx])
 
@@ -432,8 +432,6 @@ def main():
         print("카메라를 열 수 없습니다.")
         return
 
-    # MediaPipe HandLandmarker (IMAGE 모드 – 프레임 단위 처리)
-    # 한글 경로 문제를 회피하기 위해 모델을 바이트로 읽어 전달
     with open(MODEL_PATH, "rb") as f:
         model_data = f.read()
     base_options = BaseOptions(model_asset_buffer=model_data)
@@ -448,12 +446,11 @@ def main():
 
     landmarker = HandLandmarker.create_from_options(options)
 
-    # 상태
     learning_active = False
     countdown_start = 0.0
     countdown_seconds = 3
     current_gesture = "대기 중..."
-    latest_landmarks = None  # NormalizedLandmark 리스트
+    latest_landmarks = None
 
     window_name = "Hand Gesture Recognition"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -470,33 +467,28 @@ def main():
             print("프레임을 읽을 수 없습니다.")
             break
 
-        frame = cv2.flip(frame, 1)  # 좌우 반전 (거울 모드)
+        frame = cv2.flip(frame, 1)
         h, w, _ = frame.shape
         display = frame.copy()
 
-        # MediaPipe 처리
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = landmarker.detect(mp_image)
 
         if result.hand_landmarks:
-            lm_list = result.hand_landmarks[0]  # 첫 번째 손
-            # 랜드마크 그리기
+            lm_list = result.hand_landmarks[0]
             draw_hand_landmarks(display, lm_list)
-            # 동작 인식
             current_gesture = recognize_gesture(lm_list)
             latest_landmarks = lm_list
         else:
             current_gesture = "-"
             latest_landmarks = None
 
-        # ── 카운트다운 처리 ──
         if learning_active:
             elapsed = time.time() - countdown_start
             remaining = countdown_seconds - int(elapsed)
 
             if remaining > 0:
-                # 카운트다운 오버레이
                 overlay = display.copy()
                 cv2.rectangle(overlay, (0, 0), (w, h), (0, 0, 0), -1)
                 cv2.addWeighted(overlay, 0.45, display, 0.55, 0, display)
@@ -509,17 +501,14 @@ def main():
                 tx = (w - tw) // 2
                 ty = (h + th_text) // 2
 
-                # 글로우 효과
                 cv2.putText(display, text, (tx, ty), font, scale,
                             (255, 200, 0), thickness + 8, cv2.LINE_AA)
                 cv2.putText(display, text, (tx, ty), font, scale,
                             (255, 255, 255), thickness, cv2.LINE_AA)
             else:
-                # 카운트다운 종료 → 캡처
                 learning_active = False
                 captured = display.copy()
 
-                # 모달 표시 (Tkinter)
                 modal = LearningModal(captured, current_gesture, latest_landmarks)
                 choice = modal.show()
 
@@ -530,7 +519,6 @@ def main():
                     save_photo(captured, choice)
                     print(f'[학습 모드] 확인된 동작: "{choice}"')
 
-        # ── HUD 정보 표시 ──
         cv2.rectangle(display, (0, h - 50), (w, h), (0, 0, 0), -1)
 
         gesture_text = f"Gesture: {current_gesture}"
@@ -546,7 +534,6 @@ def main():
             cv2.putText(display, "L: Learn Mode", (18, 38),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
 
-            # 모델 정확도 표시
             acc_val = load_accuracy()
             acc_txt = f"Accuracy: {acc_val:.3f}"
             cv2.rectangle(display, (w - 200, 10), (w - 10, 50), (30, 30, 60), -1)
@@ -555,26 +542,23 @@ def main():
 
         cv2.imshow(window_name, display)
 
-        # ── 창의 X 닫기 버튼 감지 ──
         if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
             break
 
-        # ── 키 입력 ──
         key = cv2.waitKey(1) & 0xFF
 
-        if key == ord('q') or key == ord('Q') or key == 27:  # Q 또는 ESC
+        if key == ord('q') or key == ord('Q') or key == 27:
             break
         elif (key == ord('l') or key == ord('L')) and not learning_active:
             learning_active = True
             countdown_start = time.time()
-            print("[학습 모드] 카운트다운 시작 (5초)")
+            print("[학습 모드] 카운트다운 시작")
         elif key == ord('c') or key == ord('C'):
             cam_idx = (cam_idx + 1) % len(cameras)
             cap.release()
             cap = open_camera(cameras[cam_idx])
             print(f"[카메라] 전환 → {cameras[cam_idx]}")
 
-    # 정리 (카메라 장치 락 완벽 해제)
     if 'landmarker' in locals():
         landmarker.close()
     if 'cap' in locals() and cap is not None:
