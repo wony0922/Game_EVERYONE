@@ -62,9 +62,10 @@ def main():
 
     # 폰트
     title_font = pygame.font.Font(None, 70)
-    menu_font = pygame.font.Font(None, 50)
     info_font = pygame.font.Font(None, 30)
     small_font = pygame.font.Font(None, 24)
+    card_title_font = pygame.font.Font(None, 38)
+    card_info_font = pygame.font.Font(None, 23)
 
     # HandController 생성 (카메라 & 손 동작 인식)
     hand_controller = None
@@ -81,9 +82,23 @@ def main():
 
     # 현재 게임 목록
     games = [
-        ("PONG", run_game),
-        ("DOOM WAVE", run_doom_wave),
-        ("STROOP COLOR", run_stroop_game),
+        ("PONG", "손으로 패들을 움직여\n공을 받아내세요.", run_game),
+        ("DOOM WAVE", "시점을 돌리고 주먹을 쥐어\n적을 처치하세요.", run_doom_wave),
+        ("STROOP COLOR", "글자가 아닌 글자의 색을\n맞히는 게임입니다.", run_stroop_game),
+    ]
+    card_width = 220
+    card_height = 210
+    card_gap = 20
+    card_start_x = (WIDTH - (card_width * len(games) + card_gap * (len(games) - 1))) // 2
+    card_y = 220
+    game_cards = [
+        pygame.Rect(
+            card_start_x + index * (card_width + card_gap),
+            card_y,
+            card_width,
+            card_height,
+        )
+        for index in range(len(games))
     ]
 
     hand_input_block_until = 0
@@ -92,7 +107,7 @@ def main():
     def launch_selected_game():
         nonlocal hand_input_block_until
         try:
-            games[selected_game][1](hand_controller)
+            games[selected_game][2](hand_controller)
         finally:
             hand_input_block_until = (
                 pygame.time.get_ticks() + HAND_GAME_RETURN_COOLDOWN_MS
@@ -126,25 +141,30 @@ def main():
 
                 # 왼쪽
                 if event.key == pygame.K_LEFT:
-
-                    selected_game -= 1
-
-                    if selected_game < 0:
-                        selected_game = len(games) - 1
+                    selected_game = (selected_game - 1) % len(games)
 
                 # 오른쪽
                 elif event.key == pygame.K_RIGHT:
-
-                    selected_game += 1
-
-                    if selected_game >= len(games):
-                        selected_game = 0
+                    selected_game = (selected_game + 1) % len(games)
 
                 # Enter
                 elif event.key == pygame.K_RETURN:
 
                     # 선택된 게임 실행
                     launch_selected_game()
+
+            elif event.type == pygame.MOUSEMOTION:
+                for index, card in enumerate(game_cards):
+                    if card.collidepoint(event.pos):
+                        selected_game = index
+                        break
+
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for index, card in enumerate(game_cards):
+                    if card.collidepoint(event.pos):
+                        selected_game = index
+                        launch_selected_game()
+                        break
 
         # ----------------------------------
         # 화면 그리기
@@ -167,28 +187,47 @@ def main():
             )
         )
 
-        # 선택된 게임 이름
-        game_name = games[selected_game][0]
+        # 게임 목록 카드
+        for index, (game_name, description, _run_game) in enumerate(games):
+            card = game_cards[index]
+            selected = index == selected_game
+            card_color = (42, 62, 86) if selected else (32, 36, 48)
+            border_color = BLUE if selected else (75, 80, 95)
+            pygame.draw.rect(screen, card_color, card, border_radius=12)
+            pygame.draw.rect(screen, border_color, card, 3 if selected else 1, border_radius=12)
 
-        game_text = menu_font.render(
-            "<  " + game_name + "  >",
-            True,
-            BLUE
-        )
-
-        screen.blit(
-            game_text,
-            (
-                WIDTH // 2 - game_text.get_width() // 2,
-                280
+            title_color = BLUE if selected else WHITE
+            game_text = card_title_font.render(game_name, True, title_color)
+            screen.blit(
+                game_text,
+                (card.centerx - game_text.get_width() // 2, card.y + 36),
             )
-        )
+
+            for line_index, line in enumerate(description.splitlines()):
+                description_text = card_info_font.render(line, True, GRAY)
+                screen.blit(
+                    description_text,
+                    (
+                        card.centerx - description_text.get_width() // 2,
+                        card.y + 92 + line_index * 30,
+                    ),
+                )
+
+            if selected:
+                select_text = small_font.render("ENTER / CLICK / FIST", True, GREEN)
+                screen.blit(
+                    select_text,
+                    (
+                        card.centerx - select_text.get_width() // 2,
+                        card.bottom - 42,
+                    ),
+                )
 
         # 조작법
         if hand_controller is not None:
-            ctrl_label = "HAND POINT : SELECT    FIST : START    (KB OK)"
+            ctrl_label = "POINT : SELECT    FIST : START    (ARROWS / CLICK OK)"
         else:
-            ctrl_label = "LEFT / RIGHT : SELECT    ENTER : START"
+            ctrl_label = "LEFT / RIGHT : SELECT    ENTER / CLICK : START"
 
         info = info_font.render(
             ctrl_label,
@@ -200,7 +239,7 @@ def main():
             info,
             (
                 WIDTH // 2 - info.get_width() // 2,
-                400
+                470
             )
         )
 
@@ -225,15 +264,9 @@ def main():
 
                 # Point 제스처 + 손 위치로 좌/우 선택
                 if gesture == "Point":
-                    if hand_x < 0.35:
-                        selected_game -= 1
-                        if selected_game < 0:
-                            selected_game = len(games) - 1
-                        last_gesture_nav_time = now
-                    elif hand_x > 0.65:
-                        selected_game += 1
-                        if selected_game >= len(games):
-                            selected_game = 0
+                    target_game = min(int(hand_x * len(games)), len(games) - 1)
+                    if target_game != selected_game:
+                        selected_game = target_game
                         last_gesture_nav_time = now
 
                 # Fist(주먹) → 선택 (Enter 대체)
