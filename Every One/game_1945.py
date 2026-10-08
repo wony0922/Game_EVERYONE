@@ -3,6 +3,7 @@ import os
 import random
 import sys
 import pygame
+from hand_input import scale_hand_x
 
 # 상위 경로 모듈 검색 추가 (hand_controller 불러오기용)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -373,7 +374,7 @@ def run_game(hand_controller=None):
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
             if is_detected and not game_over and not game_clear:
                 # 1) 손 위치에 따라 플레이어 X 위치 부드럽게 이동
-                target_x = int(hand_x * WIDTH)
+                target_x = int(scale_hand_x(hand_x) * WIDTH)
                 diff = target_x - player.x
                 player.x += diff * 0.3
                 player.x = max(25, min(WIDTH - 25, player.x))

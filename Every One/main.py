@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import pygame
+from hand_input import scale_hand_x
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(CURRENT_DIR)
@@ -213,7 +214,7 @@ def main():
                 and now - last_gesture_nav_time > GESTURE_NAV_COOLDOWN
             ):
                 if gesture == "Point":
-                    target_game = min(int(hand_x * len(games)), len(games) - 1)
+                    target_game = min(int(scale_hand_x(hand_x) * len(games)), len(games) - 1)
                     if target_game != selected_game:
                         selected_game = target_game
                         last_gesture_nav_time = now

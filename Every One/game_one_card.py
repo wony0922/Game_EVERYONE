@@ -2,6 +2,7 @@ import pygame
 import random
 import os
 import sys
+from hand_input import scale_hand_x
 
 # 상위 경로 모듈 검색 추가
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -340,7 +341,7 @@ def run_game(hand_controller=None):
         if game_state == "SELECTING_SUIT":
             if hand_controller is not None and is_detected:
                 if gesture == "Point":
-                    suit_select_index = int(hand_x * len(SUITS))
+                    suit_select_index = int(scale_hand_x(hand_x) * len(SUITS))
                     suit_select_index = max(0, min(len(SUITS) - 1, suit_select_index))
                 elif gesture == "Fist" and not gesture_locked:
                     gesture_locked = True
@@ -411,7 +412,7 @@ def run_game(hand_controller=None):
         if hand_controller is not None:
             if is_detected and not game_over and turn == "PLAYER":
                 if gesture == "Point" and player_hand:
-                    selected_index = int(hand_x * len(player_hand))
+                    selected_index = int(scale_hand_x(hand_x) * len(player_hand))
                     selected_index = max(0, min(len(player_hand) - 1, selected_index))
 
                 if gesture == "Fist" and not gesture_locked:

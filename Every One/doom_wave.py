@@ -3,6 +3,7 @@ import random
 import math
 import os
 import sys
+from hand_input import scale_hand_x
 
 # 상위 폴더(hand_controller.py 위치)를 모듈 검색 경로에 추가 (pong.py 와 동일)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -50,8 +51,6 @@ TURN_SPEED = 95.0        # 초당 회전 속도(도)
 # ------------------------------------------
 # 손의 좌우 위치(0.0~1.0)를 시점 각도(-MAX_TURN~+MAX_TURN)에 그대로 대응시킨다.
 # 카메라 가장자리까지 손을 뻗지 않아도 끝까지 돌 수 있도록 가운데 구간만 사용한다.
-HAND_X_MIN = 0.15        # 이 위치 이하 → 왼쪽 끝
-HAND_X_MAX = 0.85        # 이 위치 이상 → 오른쪽 끝
 HAND_SMOOTH = 14.0       # 클수록 손을 빨리 따라감 (흔들림 ↔ 반응속도)
 FIST_REARM_TIME = 0.12   # 주먹을 편 상태가 이 시간 이상 유지돼야 다음 발사 가능
 GAME_OVER_HAND_COOLDOWN = 2.5
@@ -67,10 +66,10 @@ SHOT_DAMAGE = 1
 # 적
 # ------------------------------------------
 
-MAX_ENEMIES = 10         # 동시에 존재할 수 있는 최대 적 수
-ENEMY_TIME_LIMIT = 5.0   # 스폰 후 이 시간 안에 못 잡으면 라이프 감소
+MAX_ENEMIES = 7         # 동시에 존재할 수 있는 최대 적 수
+ENEMY_TIME_LIMIT = 7.0   # 스폰 후 이 시간 안에 못 잡으면 라이프 감소
 ENEMY_MIN_GAP = 1.1      # 적끼리 최소 간격(맵 칸 단위)
-SPAWN_INTERVAL_START = 1.5   # 시작: 1.5초에 1마리
+SPAWN_INTERVAL_START = 3   # 시작: 1.5초에 1마리
 SPAWN_INTERVAL_END = 0.5     # 60초 직전: 1초에 2마리
 
 # ------------------------------------------
@@ -1400,8 +1399,7 @@ def run_game(hand_controller=None):
                 and not key_turning
                 and hand["gesture"] != "Fist"
             ):
-                t = (hand_x - HAND_X_MIN) / (HAND_X_MAX - HAND_X_MIN)
-                t = max(0.0, min(1.0, t))
+                t = scale_hand_x(hand_x)
                 target_turn = (t * 2 - 1) * MAX_TURN
                 follow = 1 - math.exp(-HAND_SMOOTH * dt)
                 state["turn"] += (target_turn - state["turn"]) * follow

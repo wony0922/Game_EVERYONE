@@ -2,6 +2,7 @@ import pygame
 import random
 import os
 import sys
+from hand_input import scale_hand_x
 
 # 상위 경로 모듈 검색 추가
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -298,9 +299,8 @@ def run_game(hand_controller=None):
 
                 if is_detected:
                     # 손 X 좌표(0.0~1.0)를 패들 위치로 변환
-                    sensitivity = 2.3
                     target_x = int(
-                        WIDTH / 2 + (hand_x - 0.5) * WIDTH * sensitivity
+                        scale_hand_x(hand_x) * WIDTH
                         - PADDLE_WIDTH // 2
                     )
 
