@@ -9,6 +9,7 @@ TRANSITION_COOLDOWN_MS = 3000
 def show_tutorial(
     screen, title, sections, hand_controller=None, require_fist=False
 ):
+    """공통 규칙 안내 화면을 표시하고 시작/취소 입력을 처리한다."""
     width, height = screen.get_size()
     clock = pygame.time.Clock()
 
@@ -23,6 +24,8 @@ def show_tutorial(
     fist_armed = hand_controller is None
     transition_until = None
     victory_exit = VictoryExit()
+
+    # 안내가 뜨자마자 잡힌 제스처가 시작 입력으로 오인되지 않게 대기한다.
     while running:
         clock.tick(30)
         now = pygame.time.get_ticks()
@@ -54,6 +57,7 @@ def show_tutorial(
                     transition_until = now + TRANSITION_COOLDOWN_MS
                     fist_armed = False
 
+        # 손 입력은 주먹을 풀었다가 다시 쥐어야 시작되도록 준비 상태를 둔다.
         if (
             transition_until is None
             and hand_controller is not None
@@ -68,6 +72,7 @@ def show_tutorial(
         if transition_until is not None and now >= transition_until:
             return True
 
+        # 제목, 항목별 설명, 다음 동작 안내를 공통 레이아웃으로 그린다.
         screen.fill((20, 28, 34))
         pygame.draw.rect(screen, (31, 57, 47), board, border_radius=12)
         pygame.draw.rect(screen, (145, 111, 70), board, 7, border_radius=12)

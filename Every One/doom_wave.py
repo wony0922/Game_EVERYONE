@@ -125,6 +125,7 @@ MAP_H = len(MAP_LAYOUT)
 
 
 def _parse_map():
+    """문자 지도에서 벽 격자와 플레이어 시작 위치를 읽는다."""
     grid = []
     start = (1.5, 1.5)
 
@@ -146,6 +147,7 @@ BASE_ANGLE = 90.0
 
 
 def is_wall(x, y):
+    """좌표가 지도 밖이거나 벽 칸에 있으면 True를 반환한다."""
     ix = int(x)
     iy = int(y)
     if ix < 0 or iy < 0 or ix >= MAP_W or iy >= MAP_H:
@@ -248,6 +250,7 @@ def project_point(px, py, angle_deg, wx, wy):
 
 
 def has_line_of_sight(x0, y0, x1, y1):
+    """두 지점 사이를 여러 번 검사해 벽에 막히지 않았는지 확인한다."""
     dist = math.hypot(x1 - x0, y1 - y0)
     steps = max(2, int(dist * 20))
     for i in range(1, steps):
@@ -708,7 +711,7 @@ def choose_enemy_kind(hp):
 # ==========================================
 
 class Enemy:
-
+    """고정된 위치에서 제한 시간 동안 살아 있는 적의 전투 상태."""
     def __init__(self, x, y, hp=1):
         self.x = x
         self.y = y
@@ -735,7 +738,7 @@ class Enemy:
 # ==========================================
 
 class Renderer:
-
+    """레이캐스팅 벽과 원근감이 적용된 적 스프라이트를 그린다."""
     def __init__(self):
         base = make_brick_texture()
         self.wall_tex = make_shaded_textures(base)
@@ -754,6 +757,7 @@ class Renderer:
     # ---------------- 벽 ----------------
 
     def render_walls(self, angle):
+        # 화면 열마다 광선을 쏴 벽의 거리/면을 계산하고 깊이 버퍼에 기록한다.
         if self.cached_angle is not None and abs(self.cached_angle - angle) < 1e-6:
             return
 
@@ -820,6 +824,7 @@ class Renderer:
         return screen_x, depth, size, left, top
 
     def render_enemies(self, target, enemies, angle, small_font):
+        # 먼 적부터 그리며 벽보다 뒤에 있는 열은 깊이 버퍼로 가린다.
         infos = []
         for e in enemies:
             if not e.alive:
@@ -1174,6 +1179,7 @@ class Revolver:
 # ==========================================
 
 def run_game(hand_controller=None):
+    """정해진 위치에서 시점을 돌려 적을 조준·사격하는 웨이브 게임 루프."""
 
     # 메뉴에서 컨트롤러를 받지 못했으면 직접 만든다 (pong.py 와 동일)
     own_controller = False
@@ -1272,6 +1278,7 @@ def run_game(hand_controller=None):
     # --------------------------------------
 
     def spawn_enemy():
+        """시야와 벽 가림 조건을 만족하는 빈 위치에 적을 생성한다."""
         alive = [e for e in state["enemies"] if e.alive]
         if len(alive) >= MAX_ENEMIES:
             return
@@ -1300,6 +1307,7 @@ def run_game(hand_controller=None):
     # --------------------------------------
 
     def shoot():
+        """화면 중앙 조준선에 겹치는 가장 가까운 적에게 즉시 피해를 준다."""
         now = pygame.time.get_ticks()
         if now - state["last_shot"] < SHOT_COOLDOWN:
             return
@@ -1408,7 +1416,7 @@ def run_game(hand_controller=None):
         fist_now = hand_fist_pressed(dt)
 
         # ----------------------------------
-        # 진행
+        # 시간, 회전 입력, 적 생성과 제한 시간 피해를 갱신한다.
         # ----------------------------------
 
         prev_turn = state["turn"]
@@ -1495,7 +1503,7 @@ def run_game(hand_controller=None):
             state["shake"] -= dt
 
         # ==================================
-        # 화면
+        # 갱신된 상태를 원근 배경, 적, 무기, HUD 순서로 그린다.
         # ==================================
 
         angle = current_angle()
