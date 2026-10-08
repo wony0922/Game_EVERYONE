@@ -47,6 +47,7 @@ SUIT_COLORS = {'♠': BLACK, '◆': RED, '♥': RED, '♣': BLACK, 'JOKER': PURP
 RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2']
 
 class Card:
+    """원카드 한 장의 무늬와 숫자/기능 등급을 보관한다."""
     def __init__(self, suit, rank):
         self.suit = suit
         self.rank = rank
@@ -57,6 +58,7 @@ class Card:
         return f"{self.suit}{self.rank}"
 
 def run_game(hand_controller=None):
+    """안내, 카드 게임 진행, 입력 처리와 화면 렌더링을 담당한다."""
     own_controller = False
     if hand_controller is None and HandController is not None:
         try:
@@ -80,6 +82,7 @@ def run_game(hand_controller=None):
 
     game_state = "INSTRUCTION_1"
 
+    # 덱 생성과 초기 패 분배.
     def create_deck():
         deck = [Card(s, r) for s in SUITS for r in RANKS]
         deck.append(Card('JOKER', 'Black'))
@@ -122,6 +125,7 @@ def run_game(hand_controller=None):
     # 카드 날아가는 애니메이션 관리 리스트 ([x, y, target_x, target_y, progress, total_frames])
     flying_cards = []
 
+    # 카드를 뽑을 때 덱에서 손패까지 이동하는 애니메이션을 등록한다.
     def trigger_fly_animation(target_type="PLAYER"):
         # 덱 위치에서 시작
         start_x, start_y = WIDTH // 2 - 120, HEIGHT // 2 - 85
@@ -138,6 +142,7 @@ def run_game(hand_controller=None):
         })
 
     def draw_cards(target_hand, count, target_type="PLAYER"):
+        """덱에서 지정한 장수를 뽑아 손패와 비행 애니메이션에 반영한다."""
         nonlocal deck
         for _ in range(count):
             if not deck:
@@ -146,6 +151,7 @@ def run_game(hand_controller=None):
             trigger_fly_animation(target_type)
 
     def is_playable(card, top_card, cur_suit, stack):
+        """공격 누적 여부와 현재 무늬/등급을 기준으로 낼 수 있는지 판정한다."""
         if stack > 0:
             if stack in [2, 4, 6, 8, 9, 10, 12, 14, 16]:
                 return card.rank == '2' or card.suit == 'JOKER'
@@ -160,6 +166,7 @@ def run_game(hand_controller=None):
         return card.suit == cur_suit or card.rank == top_card.rank or card.suit == top_card.suit
 
     def apply_card_effect(card):
+        """낸 카드의 공격 누적, 추가 턴 또는 7의 무늬 선택 효과를 적용한다."""
         nonlocal attack_stack, current_suit, turn, message, game_state
         if card.suit == 'JOKER':
             if card.rank == 'Color':
@@ -190,6 +197,7 @@ def run_game(hand_controller=None):
         return False
 
     running = True
+    # 안내/무늬 선택/실제 플레이 화면을 상태별로 나눠 한 루프에서 처리한다.
     while running:
         clock.tick(FPS)
         current_time = pygame.time.get_ticks()
@@ -250,6 +258,7 @@ def run_game(hand_controller=None):
         # ==========================================
         # 1. 칠판 안내 1페이지 (게임 규칙)
         # ==========================================
+        # --- 1페이지: 게임 규칙 안내 ---
         if game_state == "INSTRUCTION_1":
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -338,6 +347,7 @@ def run_game(hand_controller=None):
         # ==========================================
         # 2. 칠판 안내 2페이지 (조작법 안내)
         # ==========================================
+        # --- 2페이지: 키보드와 손동작 조작 안내 ---
         if game_state == "INSTRUCTION_2":
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -433,6 +443,7 @@ def run_game(hand_controller=None):
         # ==========================================
         # 3. 7을 냈을 때 문양 선택 화면
         # ==========================================
+        # --- 7을 낸 뒤 플레이어가 바꿀 무늬를 선택한다 ---
         if game_state == "SELECTING_SUIT":
             if hand_controller is not None and is_detected:
                 if gesture == "Point":
@@ -494,6 +505,7 @@ def run_game(hand_controller=None):
         # ==========================================
         # 4. 본 게임 플레이 루프
         # ==========================================
+        # --- 플레이어 제한 시간과 손동작 입력 ---
         if turn == "PLAYER" and not game_over:
             elapsed_sec = (current_time - turn_start_time) / 1000.0
             if elapsed_sec >= 20.0:
@@ -554,6 +566,7 @@ def run_game(hand_controller=None):
                     turn = "AI"
                     ai_think_end_time = current_time + random.randint(3000, 6000)
 
+        # --- 키보드 입력: 카드 내기, 뽑기, 넘기기, 재시작 ---
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -617,7 +630,7 @@ def run_game(hand_controller=None):
                         turn = "AI"
                         ai_think_end_time = current_time + random.randint(3000, 6000)
 
-        # --- AI 턴 (3~6초 고민 후 행동) ---
+        # --- AI 턴: 낼 카드가 있으면 효과 적용, 없으면 뽑고 턴 종료 ---
         if not game_over and turn == "AI":
             if current_time >= ai_think_end_time:
                 top_card = discard_pile[-1]
@@ -670,7 +683,7 @@ def run_game(hand_controller=None):
                     turn = "PLAYER"
                     turn_start_time = pygame.time.get_ticks()
 
-        # --- 화면 렌더링 ---
+        # --- 화면 렌더링: 더미, 손패, 안내 메시지와 결과 ---
         screen.fill(BG_COLOR)
 
         top_bar = pygame.Rect(20, 20, WIDTH - 40, 50)

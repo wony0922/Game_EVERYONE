@@ -68,6 +68,7 @@ MAX_LIVES = 3
 # ==========================================
 
 def run_game(hand_controller=None):
+    """패들 이동, 공의 반사, 방어 타이밍과 점수를 관리하는 Pong 게임."""
 
     own_controller = False
     if hand_controller is None and HandController is not None:
@@ -126,6 +127,7 @@ def run_game(hand_controller=None):
     # 게임 변수
     # --------------------------------------
 
+    # 점수/목숨은 게임 진행 상태, 공 좌표와 속도는 물리 상태를 나타낸다.
     score = 0
 
     lives = MAX_LIVES
@@ -176,6 +178,7 @@ def run_game(hand_controller=None):
     defense_cooldown_until = 0
 
     def activate_defense():
+        """쿨다운이 끝난 경우에만 제한 시간 방어를 시작한다."""
         nonlocal defense_active
         nonlocal defense_start_time
         nonlocal defense_cooldown_until
@@ -192,6 +195,7 @@ def run_game(hand_controller=None):
     # ======================================
 
     def reset_ball():
+        """공을 시작 위치로 돌리고 좌우 방향을 무작위로 정한다."""
 
         nonlocal ball_x
         nonlocal ball_y
@@ -219,6 +223,7 @@ def run_game(hand_controller=None):
     # ======================================
 
     def lose_life():
+        """실패 시 목숨을 차감하고, 남아 있으면 공을 다시 배치한다."""
 
         nonlocal lives
         nonlocal game_over
@@ -308,7 +313,7 @@ def run_game(hand_controller=None):
 
 
         # ==================================
-        # 게임 진행
+        # 입력으로 패들을 이동하고 공의 충돌/점수/목숨을 갱신한다.
         # ==================================
 
         if not game_over:
@@ -385,6 +390,7 @@ def run_game(hand_controller=None):
             # 공 이동
             # --------------------------------
 
+            # 정수 Rect 대신 실수 좌표를 누적해 작은 속도도 매 프레임 보존한다.
             ball_x += (
                 ball_dx * BALL_SPEED
             )

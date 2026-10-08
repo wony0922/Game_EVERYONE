@@ -52,6 +52,7 @@ COLOR_ALIASES = {
 
 
 def _find_model_path():
+    """환경 변수 또는 게임 폴더에서 한국어 음성 모델의 위치를 찾는다."""
     configured_path = os.environ.get("VOSK_MODEL_PATH")
     if configured_path:
         if os.path.isdir(configured_path):
@@ -78,6 +79,7 @@ def _find_model_path():
 
 
 def _create_vosk_model_access_path(model_path):
+    """Windows 한글 경로 호환을 위해 필요하면 임시 영문 junction을 만든다."""
     if os.name != "nt" or model_path.isascii():
         return model_path, None
 
@@ -127,6 +129,7 @@ def _create_vosk_model_access_path(model_path):
 
 
 class VoiceRecognizer:
+    """마이크 입력을 큐로 받아 색깔 단어만 Vosk로 인식한다."""
     def __init__(self):
         try:
             from voice_dependencies import ensure_voice_dependencies
@@ -173,6 +176,7 @@ class VoiceRecognizer:
         self._thread.start()
 
     def _audio_callback(self, indata, frames, time_info, status):
+        # 콜백에서는 오디오를 큐에 넣기만 하고 무거운 인식 처리는 작업 스레드에 맡긴다.
         if status:
             self.errors.put("마이크 입력 상태: {}".format(status))
         with self._audio_lock:
@@ -184,11 +188,13 @@ class VoiceRecognizer:
                 self.errors.put("음성 입력 처리가 지연되고 있습니다.")
 
     def start_round(self):
+        """새 라운드에서 들어오는 마이크 오디오를 받기 시작한다."""
         self.round_finished.clear()
         with self._audio_lock:
             self._accepting_audio.set()
 
     def end_round(self):
+        """현재 라운드 입력을 닫고 남은 오디오의 최종 인식 결과를 요청한다."""
         with self._audio_lock:
             self._accepting_audio.clear()
         self.round_finished.clear()
@@ -201,6 +207,7 @@ class VoiceRecognizer:
                 self.results.put(transcript)
 
     def _listen(self):
+        """마이크 큐를 처리하고 라운드 종료 시 Vosk 최종 결과를 확정한다."""
         try:
             with self._sounddevice.RawInputStream(
                 samplerate=16000,
@@ -275,6 +282,7 @@ def _draw_centered(screen, font, text, color, y):
 
 
 def run_game(hand_controller=None):
+    """글자 뜻과 실제 글자색을 구분해 답하는 Stroop 라운드를 진행한다."""
     screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
     pygame.display.set_caption("Every One - Stroop Color Game")
     clock = pygame.time.Clock()
@@ -323,6 +331,7 @@ def run_game(hand_controller=None):
     ink_color = ""
 
     def next_round():
+        # 단어와 잉크색을 다르게 뽑아 Stroop 간섭 문제를 만든다.
         nonlocal word, ink_color, round_started, feedback, round_expired
         nonlocal timeout_pending
         word = random.choice(color_names)
@@ -335,6 +344,7 @@ def run_game(hand_controller=None):
             recognizer.start_round()
 
     def answer(spoken_color):
+        """정답이면 점수, 오답이면 목숨을 갱신하고 피드백 시간을 설정한다."""
         nonlocal score, lives, game_over, feedback, feedback_color, feedback_until
         if game_over or feedback or (round_expired and not timeout_pending):
             return
@@ -386,6 +396,7 @@ def run_game(hand_controller=None):
                         if pygame.K_1 <= event.key <= pygame.K_6:
                             answer(color_names[event.key - pygame.K_1])
 
+            # --- 음성 큐에서 이번 라운드의 색깔 응답을 판정 ---
             if recognizer is not None and not game_over and not feedback:
                 while True:
                     try:
@@ -412,6 +423,7 @@ def run_game(hand_controller=None):
                         if feedback or game_over:
                             break
 
+            # --- 피드백이 끝나면 다음 문제로 이동하고, 시간 초과를 처리 ---
             if not setup_error and not game_over:
                 if feedback and now >= feedback_until:
                     next_round()
@@ -444,6 +456,7 @@ def run_game(hand_controller=None):
                             feedback_color = YELLOW
                             feedback_until = now + int(FEEDBACK_TIME * 1000)
 
+            # --- 문제 글자/실제 색, 타이머, 점수와 결과 화면 렌더링 ---
             screen.fill(BACKGROUND_COLOR)
             _draw_centered(screen, title_font, "색깔 맞추기", WHITE, 42)
             screen.blit(body_font.render("점수: {}".format(score), True, WHITE), (28, 24))

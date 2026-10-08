@@ -45,6 +45,7 @@ TENS_TEXT = ["", "십", "이십", "삼십", "사십", "오십", "육십", "칠�
 HUNDREDS_TEXT = ["", "백", "이백", "삼백", "사백", "오백"]
 
 def get_korean_number_words(num):
+    """숫자를 Vosk와 음성 판정에 사용할 한글 읽기 형태로 만든다."""
     if num == 500:
         return ["오백"]
 
@@ -57,6 +58,7 @@ def get_korean_number_words(num):
 
 
 def _get_voice_number_phrases(num):
+    """현재 정답만 인식하도록 해당 턴에 필요한 음성 후보를 만든다."""
     if check_369(num) > 0:
         return ["짝", "착", "짹"]
 
@@ -130,6 +132,7 @@ KOREAN_NUM_MAP = {
 
 
 def parse_korean_number(text):
+    """음성 인식 문장에서 한글/숫자 표현을 1~500 정수로 변환한다."""
     text = text.replace(" ", "").strip(".,!?~")
     if not text:
         return None
@@ -307,6 +310,7 @@ class VoiceRecognizer:
         device_info = self._sounddevice.query_devices(kind="input")
         self.native_rate = int(device_info["default_samplerate"])
 
+        # SetGrammar 대신, 턴이 바뀔 때 처리 스레드가 recognizer를 교체한다.
         self._recognizer_type = KaldiRecognizer
         self._recognizer = self._create_recognizer(current_num)
         self._recognizer_generation = 0
@@ -341,6 +345,7 @@ class VoiceRecognizer:
                 pass
 
     def update_number(self, current_num):
+        """인식 스레드에 다음 턴 문법 교체를 요청하고 이전 음성을 비운다."""
         with self._generation_lock:
             self._generation += 1
             generation = self._generation
@@ -354,6 +359,7 @@ class VoiceRecognizer:
             pass
 
     def _listen(self):
+        """오디오를 순차 처리해 턴별 문법으로 확정된 음성 결과를 전달한다."""
         try:
             with self._sounddevice.RawInputStream(
                 samplerate=self.native_rate,
@@ -429,6 +435,7 @@ class VoiceRecognizer:
 
 
 def check_369(num):
+    """현재 숫자에 포함된 3/6/9 개수만큼 필요한 박수 횟수를 반환한다."""
     num_str = str(num)
     return num_str.count("3") + num_str.count("6") + num_str.count("9")
 
@@ -594,6 +601,7 @@ def run_tutorial(screen, font_large, font_medium, font_small, hand_controller=No
 
 
 def run_game(hand_controller=None):
+    """튜토리얼 후 음성/키보드 입력으로 AI와 369 게임을 진행한다."""
     SCREEN_WIDTH = 800
     SCREEN_HEIGHT = 600
 
@@ -633,6 +641,7 @@ def run_game(hand_controller=None):
     turn_unlocked_time = pygame.time.get_ticks()
     victory_exit = VictoryExit()
 
+    # 재시작 시 게임 진행값을 초기화하고 현재 턴의 음성 문법을 다시 요청한다.
     def reset_game():
         nonlocal current_num, is_player_turn, game_over, game_clear, message
         nonlocal player_speech, bot_speech, bot_timer, input_buffer, turn_start_time, turn_unlocked_time
@@ -653,6 +662,7 @@ def run_game(hand_controller=None):
             recognizer.clear_results()
 
     def pass_player_turn(speech_text):
+        """정답 처리 후 숫자를 넘기거나 최대 숫자에 도달하면 승리한다."""
         nonlocal current_num, is_player_turn, game_clear, message, player_speech, bot_timer, input_buffer
         player_speech = speech_text
         input_buffer = ""
@@ -666,6 +676,7 @@ def run_game(hand_controller=None):
             bot_timer = pygame.time.get_ticks()
 
     def fail_player_turn(speech_text, err_msg):
+        """오답 또는 제한 시간 초과를 게임오버 상태로 전환한다."""
         nonlocal game_over, message, player_speech, input_buffer
         player_speech = speech_text
         input_buffer = ""
@@ -688,6 +699,7 @@ def run_game(hand_controller=None):
             else:
                 victory_exit.update(False, "None", current_time)
 
+            # 플레이어 차례에만 제한 시간을 계산한다.
             if not game_over and not game_clear and is_player_turn:
                 elapsed_sec = (current_time - turn_start_time) / 1000.0
                 remaining_time = max(0, int(LIMIT_TIME - elapsed_sec + 0.99))
@@ -733,6 +745,7 @@ def run_game(hand_controller=None):
                         elif event.unicode.isdigit():
                             input_buffer += event.unicode
 
+            # --- 현재 플레이어 턴의 확정 음성 결과 처리 ---
             if recognizer is not None and not game_over and not game_clear:
                 if not is_player_turn:
                     recognizer.clear_results()
@@ -777,6 +790,7 @@ def run_game(hand_controller=None):
                                     pass_player_turn(str(parsed_val))
                                     break
 
+            # --- 플레이어 입력 후 잠깐 대기하고 AI 숫자를 처리 ---
             if not game_over and not game_clear and not is_player_turn:
                 if current_time - bot_timer > 700:
                     clap_count = check_369(current_num)
@@ -794,6 +808,7 @@ def run_game(hand_controller=None):
                             recognizer.update_number(current_num)
                             recognizer.clear_results()
 
+            # --- 카페 장면, 말풍선, 턴/시간 상태와 종료 화면 렌더링 ---
             screen.fill((20, 20, 30))
             draw_pixel_cafe_scene(screen)
 

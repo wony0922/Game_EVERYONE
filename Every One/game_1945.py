@@ -69,6 +69,7 @@ BOSS_TIME_LIMIT = 300  # 5분(300초) 버티면 보스 등장
 
 
 class Player:
+    """플레이어 기체 상태와 방어/드론 효과를 관리한다."""
     def __init__(self):
         self.x = WIDTH // 2
         self.y = HEIGHT - 80
@@ -117,6 +118,7 @@ class Player:
 
 
 class Bullet:
+    """플레이어 또는 적이 발사한 직선 탄환."""
     def __init__(self, x, y, vx=0, vy=-12, is_enemy=False):
         self.x = x
         self.y = y
@@ -143,6 +145,7 @@ class Bullet:
 
 
 class Enemy:
+    """화면 위쪽에서 내려오거나 플레이어를 향해 대각선으로 이동하는 적."""
     def __init__(self, target_x=None, target_y=None, speed_bonus=0.0):
         self.is_diagonal = random.random() < 0.3 and target_x is not None
 
@@ -188,6 +191,7 @@ class Enemy:
 
 
 class Boss:
+    """제한 시간 후 등장해 세 가지 공격 패턴을 순환하는 보스."""
     def __init__(self):
         self.x = WIDTH // 2
         self.y = -100
@@ -244,6 +248,7 @@ class Boss:
 
 
 class Item:
+    """획득 시 폭탄, 방어막, 드론 효과를 주는 하강 아이템."""
     def __init__(self, x, y, item_type="BOMB"):
         self.x = x
         self.y = y
@@ -276,6 +281,7 @@ class Item:
 
 
 class Particle:
+    """피격과 폭탄 사용 시 재생되는 간단한 파티클."""
     def __init__(self, x, y, is_bomb=False):
         self.x = x
         self.y = y
@@ -297,6 +303,7 @@ class Particle:
 
 
 def run_game(hand_controller=None):
+    """1945 게임의 입력, 전투 업데이트, 렌더링을 실행한다."""
     own_controller = False
     if hand_controller is None and HandController is not None:
         try:
@@ -336,6 +343,7 @@ def run_game(hand_controller=None):
             hand_controller.stop()
         return
 
+    # 플레이 상태와 각종 투사체/효과 객체를 보관하는 컬렉션.
     player = Player()
     bullets = []
     enemy_bullets = []
@@ -359,6 +367,7 @@ def run_game(hand_controller=None):
     victory_exit = VictoryExit()
 
     def trigger_bomb():
+        """화면의 일반 적과 적 탄환을 제거하고 보스에도 피해를 준다."""
         nonlocal bomb_flash_until, score, game_clear
         if player.bombs > 0:
             player.bombs -= 1
@@ -384,6 +393,7 @@ def run_game(hand_controller=None):
         clock.tick(FPS)
         current_time = pygame.time.get_ticks()
 
+        # 생존 시간에 따라 적 출현 빈도와 속도를 점차 높인다.
         elapsed_sec = (current_time - game_start_time) // 1000
         remaining_boss_time = max(0, BOSS_TIME_LIMIT - elapsed_sec)
         difficulty_level = 1 + (elapsed_sec // 20)
@@ -394,7 +404,7 @@ def run_game(hand_controller=None):
             boss = Boss()
             enemies.clear()
 
-        # --- 모션 인식 연동 ---
+        # --- 손 위치 이동과 주먹 폭탄 입력 ---
         if hand_controller is not None:
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
             if victory_exit.update(is_detected, gesture, current_time):
@@ -435,6 +445,7 @@ def run_game(hand_controller=None):
                 elif not game_over and not game_clear and event.key == pygame.K_SPACE:
                     trigger_bomb()
 
+        # --- 플레이어 이동, 발사, 충돌 및 아이템 효과 ---
         if not game_over and not game_clear:
             keys = pygame.key.get_pressed()
             player.move(keys)
@@ -544,7 +555,7 @@ def run_game(hand_controller=None):
                 if particle.life <= 0:
                     particles.remove(particle)
 
-        # --- 화면 그리기 ---
+        # --- 배경, 적/탄환, 효과 및 HUD 렌더링 ---
         screen.fill(COLOR_BG)
 
         for i in range(15):
