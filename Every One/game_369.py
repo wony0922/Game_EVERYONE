@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import pygame
+from font_utils import get_font
 
 from hand_exit import VictoryExit
 
@@ -55,6 +56,60 @@ def get_korean_number_words(num):
     return [word, str(num)]
 
 
+def _get_voice_number_phrases(num):
+    if check_369(num) > 0:
+        return ["짝", "착", "짹"]
+
+    h = num // 100
+    t = (num % 100) // 10
+    u = num % 10
+    parts = []
+    if h:
+        parts.append("백" if h == 1 else f"{UNITS_TEXT[h]}백")
+    if t:
+        parts.append("십" if t == 1 else f"{UNITS_TEXT[t]}십")
+    if u:
+        parts.append(UNITS_TEXT[u])
+    if len(parts) > 1:
+        phrases = {" ".join(parts)}
+    else:
+        phrases = {get_korean_number_words(num)[0]}
+
+    if 1 <= num <= 99:
+        native_units = [
+            "", "하나", "둘", "셋", "넷", "다섯",
+            "여섯", "일곱", "여덟", "아홉",
+        ]
+        native_tens = [
+            "", "열", "스물", "서른", "마흔", "쉰",
+            "예순", "일흔", "여든", "아흔",
+        ]
+        if num < 10:
+            native_unit = native_units[num]
+            phrases.update([native_unit, f"{native_unit} 번"])
+            short_unit = {1: "한", 2: "두", 3: "세", 4: "네"}.get(num)
+            if short_unit:
+                phrases.add(f"{short_unit} 번")
+        elif num % 10 == 0:
+            phrases.add(native_tens[num // 10])
+        else:
+            native_tens_word = native_tens[num // 10]
+            native_unit = native_units[num % 10]
+            phrases.add(f"{native_tens_word} {native_unit}")
+            short_unit = {1: "한", 2: "두", 3: "세", 4: "네"}.get(
+                num % 10
+            )
+            if short_unit:
+                phrases.add(f"{native_tens_word} {short_unit}")
+                phrases.add(f"{native_tens_word} {short_unit} 번")
+
+    for phrase in tuple(phrases):
+        if not phrase.endswith(" 번"):
+            phrases.add(f"{phrase} 번")
+
+    return sorted(phrases)
+
+
 # --- 한글 음성을 아라비아 숫자로 변환하는 파서 ---
 KOREAN_NUM_MAP = {
     "영": 0, "공": 0,
@@ -75,51 +130,90 @@ KOREAN_NUM_MAP = {
 
 
 def parse_korean_number(text):
-    digits = re.findall(r'\d+', text)
-    if digits:
-        return int(digits[0])
-
-    text = text.replace(" ", "")
+    text = text.replace(" ", "").strip(".,!?~")
     if not text:
         return None
 
-    if text in KOREAN_NUM_MAP:
-        return KOREAN_NUM_MAP[text]
+    digit_values = {
+        "일": 1, "이": 2, "삼": 3, "사": 4, "오": 5,
+        "육": 6, "칠": 7, "팔": 8, "구": 9,
+    }
 
-    total = 0
-    current = 0
-    found = False
+    def parse_number_phrase(phrase):
+        if re.fullmatch(r"\d{1,3}", phrase):
+            value = int(phrase)
+            return value if value <= MAX_NUM else None
 
-    i = 0
-    while i < len(text):
-        two_char = text[i:i+2]
-        if two_char in KOREAN_NUM_MAP:
-            found = True
-            val = KOREAN_NUM_MAP[two_char]
-            total += val
-            i += 2
-            continue
+        if phrase in KOREAN_NUM_MAP:
+            return KOREAN_NUM_MAP[phrase]
 
-        one_char = text[i]
-        if one_char in KOREAN_NUM_MAP:
-            found = True
-            val = KOREAN_NUM_MAP[one_char]
-            if val == 100:
-                current = (current if current != 0 else 1) * 100
-                total += current
-                current = 0
-            elif val == 10:
-                current = (current if current != 0 else 1) * 10
-                total += current
-                current = 0
-            else:
-                current += val
-            i += 1
-        else:
-            i += 1
+        native_units = {
+            "하나": 1, "둘": 2, "셋": 3, "넷": 4, "다섯": 5,
+            "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9,
+        }
+        native_short_units = {"한": 1, "두": 2, "세": 3, "네": 4}
+        native_tens = {
+            "열": 10, "스물": 20, "서른": 30, "마흔": 40,
+            "쉰": 50, "예순": 60, "일흔": 70, "여든": 80,
+            "아흔": 90,
+        }
+        if phrase in native_units:
+            return native_units[phrase]
+        if phrase in native_tens:
+            return native_tens[phrase]
+        for tens_word, tens_value in native_tens.items():
+            if phrase.startswith(tens_word):
+                unit_word = phrase[len(tens_word):]
+                if unit_word in native_units:
+                    return tens_value + native_units[unit_word]
+                if unit_word in native_short_units:
+                    return tens_value + native_short_units[unit_word]
 
-    total += current
-    return total if found else None
+        match = re.fullmatch(
+            r"(?:(?P<hundreds>[일이삼사오]?)백)?"
+            r"(?:(?P<tens>[일이삼사오육칠팔구]?)십)?"
+            r"(?P<units>[일이삼사오육칠팔구])?",
+            phrase,
+        )
+        if match is None or not any(
+            group is not None for group in match.groups()
+        ):
+            return None
+
+        hundreds = match.group("hundreds")
+        tens = match.group("tens")
+        units = match.group("units")
+        value = (
+            (digit_values.get(hundreds, 1) * 100 if hundreds is not None else 0)
+            + (digit_values.get(tens, 1) * 10 if tens is not None else 0)
+            + digit_values.get(units, 0)
+        )
+        return value if value <= MAX_NUM else None
+
+    value = parse_number_phrase(text)
+    if value is not None:
+        return value
+
+    endings = (
+        "번입니다", "번이에요", "번이요", "번이야", "번요", "번",
+        "이에요", "입니다", "예요", "이야",
+        "요", "은", "는", "을", "를", "이가", "이", "가",
+    )
+    while True:
+        ending = next(
+            (
+                item for item in endings
+                if len(text) > len(item) and text.endswith(item)
+            ),
+            None,
+        )
+        if ending is None:
+            return None
+
+        text = text[:-len(ending)]
+        value = parse_number_phrase(text)
+        if value is not None:
+            return value
 
 
 def _find_model_path():
@@ -186,14 +280,16 @@ def _create_vosk_model_access_path(model_path):
 
 
 class VoiceRecognizer:
-    def __init__(self):
+    def __init__(self, current_num=1):
         try:
+            from voice_dependencies import ensure_voice_dependencies
+
+            ensure_voice_dependencies()
             import sounddevice
             from vosk import KaldiRecognizer, Model
-        except ImportError as error:
+        except (ImportError, RuntimeError) as error:
             raise RuntimeError(
-                "음성인식 패키지가 없습니다. 다음 명령으로 설치해 주세요:\n"
-                "py -3.14 -m pip install vosk sounddevice"
+                "음성인식 패키지 준비에 실패했습니다:\n{}".format(error)
             ) from error
 
         model_path = _find_model_path()
@@ -211,41 +307,45 @@ class VoiceRecognizer:
         device_info = self._sounddevice.query_devices(kind="input")
         self.native_rate = int(device_info["default_samplerate"])
 
-        initial_grammar = ["짝", "착", "[unk]"]
-        self._recognizer = KaldiRecognizer(
-            self._model,
-            self.native_rate,
-            json.dumps(initial_grammar, ensure_ascii=False)
-        )
+        self._recognizer_type = KaldiRecognizer
+        self._recognizer = self._create_recognizer(current_num)
+        self._recognizer_generation = 0
 
         self._audio_queue = queue.Queue(maxsize=100)
         self.results = queue.Queue()
         self.errors = queue.Queue()
+        self._number_updates = queue.Queue()
+        self._generation = 0
+        self._generation_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._listen, daemon=True)
         self._thread.start()
 
-    def update_grammar(self, current_num):
-        if self._recognizer is None:
-            return
-
-        target_clap = check_369(current_num)
-        if target_clap > 0:
-            grammar = ["짝", "착", "짹", "[unk]"]
-        else:
-            grammar = get_korean_number_words(current_num) + ["짝", "[unk]"]
-
-        try:
-            self._recognizer.SetGrammar(json.dumps(grammar, ensure_ascii=False))
-        except Exception:
-            pass
+    def _create_recognizer(self, current_num):
+        grammar = json.dumps(
+            _get_voice_number_phrases(current_num),
+            ensure_ascii=False,
+        )
+        return self._recognizer_type(
+            self._model,
+            self.native_rate,
+            grammar,
+        )
 
     def clear_results(self):
-        while not self.results.empty():
+        for result_queue in (self.results, self._audio_queue):
             try:
-                self.results.get_nowait()
+                while True:
+                    result_queue.get_nowait()
             except queue.Empty:
-                break
+                pass
+
+    def update_number(self, current_num):
+        with self._generation_lock:
+            self._generation += 1
+            generation = self._generation
+        self._number_updates.put((current_num, generation))
+        self.clear_results()
 
     def _audio_callback(self, indata, frames, time_info, status):
         try:
@@ -257,24 +357,52 @@ class VoiceRecognizer:
         try:
             with self._sounddevice.RawInputStream(
                 samplerate=self.native_rate,
-                blocksize=16000,
+                blocksize=8000,
                 dtype="int16",
                 channels=1,
                 callback=self._audio_callback,
             ):
                 while not self._stop_event.is_set():
+                    current_num = None
+                    generation = None
+                    try:
+                        current_num, generation = (
+                            self._number_updates.get_nowait()
+                        )
+                        while True:
+                            try:
+                                current_num, generation = (
+                                    self._number_updates.get_nowait()
+                                )
+                            except queue.Empty:
+                                break
+                    except queue.Empty:
+                        pass
+
+                    if current_num is not None:
+                        self._recognizer = self._create_recognizer(current_num)
+                        self._recognizer_generation = generation
+                        self.clear_results()
+
                     try:
                         audio = self._audio_queue.get(timeout=0.1)
                     except queue.Empty:
                         continue
+                    with self._generation_lock:
+                        audio_generation = self._generation
+                    recognizer_generation = self._recognizer_generation
                     if self._recognizer.AcceptWaveform(audio):
-                        transcript = json.loads(self._recognizer.Result()).get("text", "")
-                        if transcript:
-                            self.results.put(transcript)
+                        result = self._recognizer.Result()
                     else:
-                        partial = json.loads(self._recognizer.PartialResult()).get("partial", "")
-                        if partial:
-                            self.results.put(f"PARTIAL:{partial}")
+                        continue
+                    transcript = json.loads(result).get("text", "")
+                    with self._generation_lock:
+                        is_current_generation = (
+                            audio_generation == self._generation
+                            and recognizer_generation == self._generation
+                        )
+                    if transcript and is_current_generation:
+                        self.results.put(transcript)
         except Exception as error:
             self.errors.put(f"마이크 오류: {error}")
 
@@ -439,7 +567,7 @@ def run_tutorial(screen, font_large, font_medium, font_small, hand_controller=No
             "",
             "[조작 방법]",
             "· 음성 조작: 마이크를 통해 숫자를 발음하거나 '짝'이라고 말하기",
-            "· 키보드 조작: 숫자 입력 후 [Enter], '짝'일 경우 [Space] 2번 연타"
+            "· 키보드 조작: 숫자 입력 후 [Enter], '짝'일 경우 [Space] 한 번"
         ]
 
         y_offset = 150
@@ -473,18 +601,11 @@ def run_game(hand_controller=None):
     pygame.display.set_caption("Every One - 369 Mini Game")
     clock = pygame.time.Clock()
 
-    try:
-        font_large = pygame.font.SysFont("malgungothic", 42, bold=True)
-        font_timer = pygame.font.SysFont("malgungothic", 50, bold=True)
-        font_medium = pygame.font.SysFont("malgungothic", 20, bold=True)
-        font_small = pygame.font.SysFont("malgungothic", 17, bold=True)
-        font_speech = pygame.font.SysFont("malgungothic", 28, bold=True)
-    except:
-        font_large = pygame.font.Font(None, 48)
-        font_timer = pygame.font.Font(None, 56)
-        font_medium = pygame.font.Font(None, 24)
-        font_small = pygame.font.Font(None, 20)
-        font_speech = pygame.font.Font(None, 32)
+    font_large = get_font(42, bold=True)
+    font_timer = get_font(50, bold=True)
+    font_medium = get_font(20, bold=True)
+    font_small = get_font(17, bold=True)
+    font_speech = get_font(28, bold=True)
 
     # 게임 시작 전 튜토리얼 먼저 실행
     if not run_tutorial(
@@ -495,7 +616,7 @@ def run_game(hand_controller=None):
     recognizer = None
     setup_error = None
     try:
-        recognizer = VoiceRecognizer()
+        recognizer = VoiceRecognizer(current_num=1)
     except (RuntimeError, OSError) as error:
         setup_error = str(error)
 
@@ -508,17 +629,13 @@ def run_game(hand_controller=None):
     bot_speech = ""
     bot_timer = 0
     input_buffer = ""
-    space_press_count = 0
     turn_start_time = pygame.time.get_ticks()
     turn_unlocked_time = pygame.time.get_ticks()
     victory_exit = VictoryExit()
 
-    if recognizer:
-        recognizer.update_grammar(current_num)
-
     def reset_game():
         nonlocal current_num, is_player_turn, game_over, game_clear, message
-        nonlocal player_speech, bot_speech, bot_timer, input_buffer, space_press_count, turn_start_time, turn_unlocked_time
+        nonlocal player_speech, bot_speech, bot_timer, input_buffer, turn_start_time, turn_unlocked_time
         current_num = 1
         is_player_turn = True
         game_over = False
@@ -528,18 +645,17 @@ def run_game(hand_controller=None):
         bot_speech = ""
         bot_timer = 0
         input_buffer = ""
-        space_press_count = 0
+
         turn_start_time = pygame.time.get_ticks()
         turn_unlocked_time = pygame.time.get_ticks() + 300
         if recognizer:
-            recognizer.update_grammar(current_num)
+            recognizer.update_number(current_num)
             recognizer.clear_results()
 
     def pass_player_turn(speech_text):
-        nonlocal current_num, is_player_turn, game_clear, message, player_speech, bot_timer, input_buffer, space_press_count
+        nonlocal current_num, is_player_turn, game_clear, message, player_speech, bot_timer, input_buffer
         player_speech = speech_text
         input_buffer = ""
-        space_press_count = 0
 
         if current_num >= MAX_NUM:
             game_clear = True
@@ -550,10 +666,9 @@ def run_game(hand_controller=None):
             bot_timer = pygame.time.get_ticks()
 
     def fail_player_turn(speech_text, err_msg):
-        nonlocal game_over, message, player_speech, input_buffer, space_press_count
+        nonlocal game_over, message, player_speech, input_buffer
         player_speech = speech_text
         input_buffer = ""
-        space_press_count = 0
         game_over = True
         message = f"{err_msg} [Space: 재시작 | ESC: 메뉴]"
 
@@ -601,14 +716,11 @@ def run_game(hand_controller=None):
                             if target_clap == 0:
                                 fail_player_turn("짝!", f"틀렸습니다! ({current_num}은/는 숫자를 쳐야 합니다)")
                             else:
-                                space_press_count += 1
-                                input_buffer = ""
-                                if space_press_count == 2:
-                                    pass_player_turn("짝!")
+                                pass_player_turn("짝!")
 
                         elif event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                             if target_clap > 0:
-                                fail_player_turn(input_buffer if input_buffer else "X", f"틀렸습니다! ({current_num}은/는 스페이스 2번 연타 = 짝)")
+                                fail_player_turn(input_buffer if input_buffer else "X", f"틀렸습니다! ({current_num}은/는 스페이스 한 번 = 짝)")
                             else:
                                 if input_buffer == str(current_num):
                                     pass_player_turn(input_buffer)
@@ -616,17 +728,15 @@ def run_game(hand_controller=None):
                                     fail_player_turn(input_buffer if input_buffer else "X", f"틀렸습니다! (정답: {current_num})")
 
                         elif event.key == pygame.K_BACKSPACE:
-                            if space_press_count > 0:
-                                space_press_count -= 1
-                            else:
-                                input_buffer = input_buffer[:-1]
+                            input_buffer = input_buffer[:-1]
 
                         elif event.unicode.isdigit():
-                            space_press_count = 0
                             input_buffer += event.unicode
 
             if recognizer is not None and not game_over and not game_clear:
                 if not is_player_turn:
+                    recognizer.clear_results()
+                elif current_time < turn_unlocked_time:
                     recognizer.clear_results()
                 elif current_time >= turn_unlocked_time:
                     while True:
@@ -646,7 +756,7 @@ def run_game(hand_controller=None):
                             except queue.Empty:
                                 break
 
-                            raw_text = transcript.replace("PARTIAL:", "").replace(" ", "").strip()
+                            raw_text = transcript.replace(" ", "").strip()
                             if not raw_text:
                                 continue
 
@@ -662,8 +772,7 @@ def run_game(hand_controller=None):
                             parsed_val = parse_korean_number(raw_text)
                             if parsed_val is not None:
                                 if target_clap > 0:
-                                    fail_player_turn(str(parsed_val), f"틀렸습니다! ({current_num}은/는 짝을 외쳐야 합니다)")
-                                    break
+                                    continue
                                 elif parsed_val == current_num:
                                     pass_player_turn(str(parsed_val))
                                     break
@@ -682,7 +791,7 @@ def run_game(hand_controller=None):
                         turn_start_time = pygame.time.get_ticks()
                         turn_unlocked_time = pygame.time.get_ticks() + 300
                         if recognizer:
-                            recognizer.update_grammar(current_num)
+                            recognizer.update_number(current_num)
                             recognizer.clear_results()
 
             screen.fill((20, 20, 30))
@@ -693,9 +802,7 @@ def run_game(hand_controller=None):
                 timer_txt = font_timer.render(str(remaining_time), True, timer_color)
                 screen.blit(timer_txt, (25, 15))
 
-            if space_press_count > 0:
-                draw_pixel_speech_bubble(screen, font_speech, "짝!", (270, 230), is_left_tail=True, is_editing=True)
-            elif is_player_turn:
+            if is_player_turn:
                 draw_pixel_speech_bubble(screen, font_speech, input_buffer, (270, 230), is_left_tail=True, is_editing=True)
             else:
                 draw_pixel_speech_bubble(screen, font_speech, player_speech, (270, 230), is_left_tail=True)

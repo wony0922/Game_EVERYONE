@@ -1,0 +1,6 @@
+# Raspberry Pi OS 64-bit (aarch64), Debian Bookworm or newer
+mediapipe==1.1.0
+pygame-ce==2.5.8
+Pillow
+vosk==0.3.45
+sounddevice==0.5.6

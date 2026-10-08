@@ -5,15 +5,16 @@ MediaPipe 1.0 (Tasks API) + OpenCV + Tkinter (WiFi 불필요, 100% 오프라인)
 
 import cv2
 import mediapipe as mp
-import numpy as np
 import os
 import json
 import time
 import math
 import tkinter as tk
-from tkinter import messagebox
 from PIL import Image, ImageTk
 from datetime import datetime
+from camera_utils import open_camera as open_platform_camera
+from ui_font import get_tk_font_family
+
 
 # ══════════════════════════════════════════════════════════
 #  경로 및 파일 설정
@@ -214,17 +215,18 @@ class LearningModal:
 
     def show(self):
         self.root = tk.Tk()
+        self.font_family = get_tk_font_family(self.root)
         self.root.title(f"학습 모드 – 데이터 수집 ({self.sample_index}/5)")
         self.root.configure(bg="#13141f")
         self.root.resizable(False, False)
         self.root.attributes("-topmost", True)
 
         header = tk.Label(self.root, text=f"🎯 학습 데이터 등록 ({self.sample_index} / 5번째)",
-                          font=("맑은 고딕", 15, "bold"), fg="#ffd54f", bg="#13141f")
+                          font=(self.font_family, 15, "bold"), fg="#ffd54f", bg="#13141f")
         header.pack(pady=(16, 6))
 
         sub = tk.Label(self.root, text="캡처된 손 동작이 무엇인지 선택하거나 새로 입력해 주세요.",
-                       font=("맑은 고딕", 10), fg="#a0a0b0", bg="#13141f")
+                       font=(self.font_family, 10), fg="#a0a0b0", bg="#13141f")
         sub.pack(pady=(0, 10))
 
         img_rgb = cv2.cvtColor(self.captured_frame, cv2.COLOR_BGR2RGB)
@@ -234,7 +236,7 @@ class LearningModal:
         img_label.pack(pady=4)
 
         ai_box = tk.Label(self.root, text=f"현재 감지된 동작: {self.detected_gesture}",
-                          font=("맑은 고딕", 11, "bold"), fg="#82b1ff", bg="#1c1e2f",
+                          font=(self.font_family, 11, "bold"), fg="#82b1ff", bg="#1c1e2f",
                           padx=12, pady=6, relief="ridge")
         ai_box.pack(pady=10)
 
@@ -247,7 +249,7 @@ class LearningModal:
 
         col, row = 0, 0
         for name in all_names:
-            btn = tk.Button(btn_frame, text=name, font=("맑은 고딕", 10),
+            btn = tk.Button(btn_frame, text=name, font=(self.font_family, 10),
                             fg="#ffffff", bg="#252840", activebackground="#3d426b",
                             relief="flat", cursor="hand2",
                             command=lambda n=name: self._choose(n))
@@ -259,12 +261,12 @@ class LearningModal:
 
         next_row = row + 1 if col == 0 else row + 2
 
-        btn_other = tk.Button(btn_frame, text="✏️ 직접 새 동작 입력", font=("맑은 고딕", 10, "bold"),
+        btn_other = tk.Button(btn_frame, text="✏️ 직접 새 동작 입력", font=(self.font_family, 10, "bold"),
                               fg="#69f0ae", bg="#1b3d2b", activebackground="#2a5d42",
                               relief="flat", cursor="hand2", command=self._show_input)
         btn_other.grid(row=next_row, column=0, padx=4, pady=4, sticky="ew")
 
-        btn_retry = tk.Button(btn_frame, text="🔄 다시 캡처 (재시도)", font=("맑은 고딕", 10),
+        btn_retry = tk.Button(btn_frame, text="🔄 다시 캡처 (재시도)", font=(self.font_family, 10),
                               fg="#ffab91", bg="#3e231e", activebackground="#5e342d",
                               relief="flat", cursor="hand2", command=self._retry)
         btn_retry.grid(row=next_row, column=1, padx=4, pady=4, sticky="ew")
@@ -273,13 +275,13 @@ class LearningModal:
         btn_frame.columnconfigure(1, weight=1)
 
         self.entry_frame = tk.Frame(self.root, bg="#13141f")
-        self.entry = tk.Entry(self.entry_frame, font=("맑은 고딕", 11),
+        self.entry = tk.Entry(self.entry_frame, font=(self.font_family, 11),
                               bg="#202336", fg="#ffffff", insertbackground="#ffffff",
                               relief="flat", bd=4)
         self.entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.entry.bind("<Return>", lambda e: self._confirm_entry())
 
-        btn_ok = tk.Button(self.entry_frame, text="등록", font=("맑은 고딕", 10, "bold"),
+        btn_ok = tk.Button(self.entry_frame, text="등록", font=(self.font_family, 10, "bold"),
                            fg="#ffffff", bg="#6c5ce7", activebackground="#8375f0",
                            relief="flat", cursor="hand2", command=self._confirm_entry)
         btn_ok.pack(side="right")
@@ -328,54 +330,55 @@ class FinalConfirmationModal:
 
     def show(self):
         self.root = tk.Tk()
+        self.font_family = get_tk_font_family(self.root)
         self.root.title("학습 결과 최종 반영 여부 확인")
         self.root.configure(bg="#11131e")
         self.root.resizable(False, False)
         self.root.attributes("-topmost", True)
 
         title = tk.Label(self.root, text="📢 테스트 완료: 기본 모드에 최종 반영할까요?",
-                         font=("맑은 고딕", 15, "bold"), fg="#ffffff", bg="#11131e")
+                         font=(self.font_family, 15, "bold"), fg="#ffffff", bg="#11131e")
         title.pack(pady=(20, 8), padx=20)
 
         desc = tk.Label(self.root, text="테스트 모드에서 확인한 신규 5개 동작을 기본 모드(메인 데이터베이스)에 저장할지 결정하세요.",
-                        font=("맑은 고딕", 10), fg="#a4b0be", bg="#11131e")
+                        font=(self.font_family, 10), fg="#a4b0be", bg="#11131e")
         desc.pack(pady=(0, 16), padx=20)
 
         list_box = tk.LabelFrame(self.root, text=" 5개 학습 완료 항목 ",
-                                 font=("맑은 고딕", 10, "bold"), fg="#ffd32a", bg="#1e2235", padx=12, pady=8)
+                                 font=(self.font_family, 10, "bold"), fg="#ffd32a", bg="#1e2235", padx=12, pady=8)
         list_box.pack(fill="x", padx=24, pady=6)
 
         for i, s in enumerate(self.session_samples, start=1):
             lbl = tk.Label(list_box, text=f"• [{i}/5] 동작명: {s['name']}",
-                           font=("맑은 고딕", 10), fg="#f1f2f6", bg="#1e2235", anchor="w")
+                           font=(self.font_family, 10), fg="#f1f2f6", bg="#1e2235", anchor="w")
             lbl.pack(fill="x", pady=2)
 
         acc_frame = tk.Frame(self.root, bg="#181a29", bd=1, relief="solid", padx=16, pady=12)
         acc_frame.pack(fill="x", padx=24, pady=16)
 
         curr_lbl = tk.Label(acc_frame, text=f"현재 모델 정확도: {self.current_accuracy:.3f}",
-                            font=("맑은 고딕", 11, "bold"), fg="#70a1ff", bg="#181a29")
+                            font=(self.font_family, 11, "bold"), fg="#70a1ff", bg="#181a29")
         curr_lbl.pack(pady=2)
 
         yes_info = tk.Label(acc_frame, text=f"▶ YES 선택 시: {self.current_accuracy:.3f} ➔ {self.expected_yes_acc:.3f} (정확도 상승 📈)",
-                            font=("맑은 고딕", 10, "bold"), fg="#2ed573", bg="#181a29")
+                            font=(self.font_family, 10, "bold"), fg="#2ed573", bg="#181a29")
         yes_info.pack(pady=3)
 
         no_info = tk.Label(acc_frame, text=f"▶ NO  선택 시: {self.current_accuracy:.3f} ➔ {self.expected_no_acc:.3f} (반영 취소 및 감점 📉)",
-                           font=("맑은 고딕", 10), fg="#ff4757", bg="#181a29")
+                           font=(self.font_family, 10), fg="#ff4757", bg="#181a29")
         no_info.pack(pady=3)
 
         btn_box = tk.Frame(self.root, bg="#11131e")
         btn_box.pack(pady=(8, 20), padx=24, fill="x")
 
         btn_yes = tk.Button(btn_box, text="✔ YES (기본 모드에 최종 반영)",
-                            font=("맑은 고딕", 11, "bold"), fg="#ffffff", bg="#20bf6b",
+                            font=(self.font_family, 11, "bold"), fg="#ffffff", bg="#20bf6b",
                             activebackground="#26de81", height=2, relief="flat", cursor="hand2",
                             command=self._on_yes)
         btn_yes.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
         btn_no = tk.Button(btn_box, text="✖ NO (반영 취소 및 폐기)",
-                           font=("맑은 고딕", 11, "bold"), fg="#ffffff", bg="#eb3b5a",
+                           font=(self.font_family, 11, "bold"), fg="#ffffff", bg="#eb3b5a",
                            activebackground="#fc5c65", height=2, relief="flat", cursor="hand2",
                            command=self._on_no)
         btn_no.pack(side="right", fill="x", expand=True, padx=(8, 0))
@@ -403,18 +406,7 @@ class FinalConfirmationModal:
 #  카메라 및 MediaPipe 유틸 (USB 카메라 다중 지원 추가)
 # ══════════════════════════════════════════════════════════
 def open_camera(index=0):
-    cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(index, cv2.CAP_MSMF)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(index)
-
-    if cap.isOpened():
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        for _ in range(5):
-            cap.read()
-    return cap
+    return open_platform_camera(index)
 
 
 HAND_CONNECTIONS = mp.tasks.vision.HandLandmarksConnections.HAND_CONNECTIONS

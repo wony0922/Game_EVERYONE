@@ -43,7 +43,7 @@ echo [START] Launching game...
 echo.
 
 cd /d "%~dp0"
-py -3.14 main.py
+py -3.14 -X faulthandler main.py
 
 if %errorlevel% neq 0 (
     echo.

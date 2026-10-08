@@ -1,4 +1,5 @@
 import pygame
+from font_utils import get_font
 from game_tutorial import show_tutorial
 from hand_exit import VictoryExit
 import random
@@ -1189,9 +1190,9 @@ def run_game(hand_controller=None):
 
     clock = pygame.time.Clock()
 
-    font = pygame.font.Font(None, 34)
-    big_font = pygame.font.Font(None, 72)
-    small_font = pygame.font.Font(None, 25)
+    font = get_font(34)
+    big_font = get_font(72)
+    small_font = get_font(25)
 
     if not show_tutorial(
         screen,
