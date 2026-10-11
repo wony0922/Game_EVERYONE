@@ -4,3 +4,7 @@ __pycache__/
 Thumbs.db
 *.log
 *.metadata.json
+.venv/
+.venv-pi/
+vosk-model-*/
+*.zip
