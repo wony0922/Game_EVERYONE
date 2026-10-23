@@ -23,6 +23,17 @@ def _try_open_single(index, width, height, warmup_frames=5):
         cap.release()
 
     if cap is not None and cap.isOpened():
+        # 리눅스/라즈베리파이: 대역폭과 CPU 디코딩 부담을 줄이기 위해 MJPG 및 버퍼 1 설정
+        if sys.platform.startswith("linux"):
+            try:
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+            except Exception:
+                pass
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
+
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         for _ in range(warmup_frames):
