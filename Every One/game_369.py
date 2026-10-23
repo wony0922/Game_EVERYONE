@@ -8,8 +8,8 @@ import tempfile
 import threading
 import pygame
 from font_utils import get_font
-
 from hand_exit import VictoryExit
+from display_utils import set_game_display, handle_fullscreen_toggle
 
 # --- 레트로 픽셀 감성 팔레트 ---
 COLOR_OUTSIDE = (165, 200, 220)
@@ -610,8 +610,7 @@ def run_game(hand_controller=None):
     SCREEN_WIDTH = 800
     SCREEN_HEIGHT = 600
 
-    screen = pygame.display.set_mode((1040, 600))
-    pygame.display.set_caption("Every One - 369 Mini Game")
+    screen = set_game_display((1040, 600), "Every One - 369 Mini Game")
     clock = pygame.time.Clock()
 
     font_large = get_font(42, bold=True)
@@ -717,6 +716,8 @@ def run_game(hand_controller=None):
                     running = False
 
                 if event.type == pygame.KEYDOWN:
+                    if handle_fullscreen_toggle(event):
+                        continue
                     if event.key == pygame.K_ESCAPE:
                         running = False
                         break

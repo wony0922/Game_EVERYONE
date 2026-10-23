@@ -7,6 +7,7 @@ from font_utils import get_font
 from hand_input import scale_hand_x
 from game_tutorial import show_tutorial
 from hand_exit import VictoryExit
+from display_utils import set_game_display, handle_fullscreen_toggle
 
 # 상위 경로 모듈 검색 추가 (hand_controller 불러오기용)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -313,8 +314,7 @@ def run_game(hand_controller=None):
         except Exception as e:
             print(f"[1945] HandController 생성 실패: {e}")
 
-    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
-    pygame.display.set_caption("Every One - 1945 Air Combat")
+    screen = set_game_display((WINDOW_WIDTH, HEIGHT), "Every One - 1945 Air Combat")
     clock = pygame.time.Clock()
 
     font_large = get_font(42, bold=True)
@@ -428,6 +428,8 @@ def run_game(hand_controller=None):
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
+                if handle_fullscreen_toggle(event):
+                    continue
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 elif (game_over or game_clear) and event.key in (pygame.K_SPACE, pygame.K_RETURN):

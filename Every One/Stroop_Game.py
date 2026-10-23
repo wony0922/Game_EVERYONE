@@ -12,6 +12,7 @@ from font_utils import get_font
 
 from game_tutorial import show_tutorial
 from hand_exit import VictoryExit
+from display_utils import set_game_display, handle_fullscreen_toggle
 
 
 WIDTH = 800
@@ -285,8 +286,7 @@ def _draw_centered(screen, font, text, color, y):
 
 def run_game(hand_controller=None):
     """글자 뜻과 실제 글자색을 구분해 답하는 Stroop 라운드를 진행한다."""
-    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
-    pygame.display.set_caption("Every One - Stroop Color Game")
+    screen = set_game_display((WINDOW_WIDTH, HEIGHT), "Every One - Stroop Color Game")
     clock = pygame.time.Clock()
     title_font = _font(38, True)
     word_font = _font(100, True)
@@ -382,6 +382,8 @@ def run_game(hand_controller=None):
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.KEYDOWN:
+                    if handle_fullscreen_toggle(event):
+                        continue
                     if event.key == pygame.K_ESCAPE:
                         running = False
                     elif game_over and event.key == pygame.K_RETURN:

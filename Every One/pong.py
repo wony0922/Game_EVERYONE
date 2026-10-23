@@ -6,6 +6,7 @@ import sys
 from hand_input import scale_hand_x
 from game_tutorial import show_tutorial
 from hand_exit import VictoryExit
+from display_utils import set_game_display, handle_fullscreen_toggle
 
 # 상위 경로 모듈 검색 추가
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -83,12 +84,8 @@ def run_game(hand_controller=None):
     # 화면
     # --------------------------------------
 
-    screen = pygame.display.set_mode(
-        (WINDOW_WIDTH, HEIGHT)
-    )
-
-    pygame.display.set_caption(
-        "Mini Pong (Hand Motion Controlled)"
+    screen = set_game_display(
+        (WINDOW_WIDTH, HEIGHT), "Mini Pong (Hand Motion Controlled)"
     )
 
 
@@ -275,6 +272,8 @@ def run_game(hand_controller=None):
 
             # 키를 누른 순간
             elif event.type == pygame.KEYDOWN:
+                if handle_fullscreen_toggle(event):
+                    continue
 
 
                 # --------------------------------

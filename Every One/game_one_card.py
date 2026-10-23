@@ -5,6 +5,7 @@ import os
 import sys
 from hand_input import scale_hand_x
 from hand_exit import VictoryExit
+from display_utils import set_game_display, handle_fullscreen_toggle
 
 # 상위 경로 모듈 검색 추가
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -68,8 +69,7 @@ def run_game(hand_controller=None):
         except Exception as e:
             print(f"[OneCard] HandController 생성 실패: {e}")
 
-    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
-    pygame.display.set_caption("Every One - One Card Deluxe")
+    screen = set_game_display((WINDOW_WIDTH, HEIGHT), "Every One - One Card Deluxe")
     clock = pygame.time.Clock()
 
     font_title = get_font(26, bold=True)
@@ -215,6 +215,10 @@ def run_game(hand_controller=None):
     while running:
         clock.tick(FPS)
         current_time = pygame.time.get_ticks()
+
+        for ev in pygame.event.get(pygame.KEYDOWN):
+            if not handle_fullscreen_toggle(ev):
+                pygame.event.post(ev)
 
         is_detected = False
         gesture = "None"

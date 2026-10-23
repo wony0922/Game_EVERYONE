@@ -4,6 +4,7 @@ import time
 import pygame
 from font_utils import get_font
 from hand_input import scale_hand_x
+from display_utils import set_game_display, handle_fullscreen_toggle
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(CURRENT_DIR)
@@ -41,8 +42,7 @@ GRAY = (130, 130, 140)
 
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
-    pygame.display.set_caption("Every One")
+    screen = set_game_display((WINDOW_WIDTH, HEIGHT), "Every One")
     clock = pygame.time.Clock()
 
     title_font = get_font(70)
@@ -124,6 +124,8 @@ def main():
                 running = False
 
             elif event.type == pygame.KEYDOWN:
+                if handle_fullscreen_toggle(event):
+                    continue
                 if event.key == pygame.K_LEFT:
                     move_selection(-1)
 

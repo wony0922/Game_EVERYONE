@@ -2,6 +2,7 @@ import pygame
 from font_utils import get_font
 from game_tutorial import show_tutorial
 from hand_exit import VictoryExit
+from display_utils import set_game_display, handle_fullscreen_toggle
 import random
 import math
 import os
@@ -1191,8 +1192,7 @@ def run_game(hand_controller=None):
         except Exception as e:
             print(f"[Doom Wave] HandController 생성 실패: {e}")
 
-    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
-    pygame.display.set_caption("DOOM WAVE - T CORRIDOR")
+    screen = set_game_display((WINDOW_WIDTH, HEIGHT), "DOOM WAVE - T CORRIDOR")
 
     clock = pygame.time.Clock()
 
@@ -1370,6 +1370,8 @@ def run_game(hand_controller=None):
                 running = False
 
             elif event.type == pygame.KEYDOWN:
+                if handle_fullscreen_toggle(event):
+                    continue
 
                 if event.key == pygame.K_ESCAPE:
                     running = False
