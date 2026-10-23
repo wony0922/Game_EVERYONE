@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import pygame
+from display_utils import set_game_mode
 from font_utils import get_font
 from hand_input import scale_hand_x
 
@@ -41,7 +42,7 @@ GRAY = (130, 130, 140)
 
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
+    screen = set_game_mode((WINDOW_WIDTH, HEIGHT))
     pygame.display.set_caption("Every One")
     clock = pygame.time.Clock()
 

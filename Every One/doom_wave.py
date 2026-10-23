@@ -1,4 +1,5 @@
 import pygame
+from display_utils import set_game_mode
 from font_utils import get_font
 from game_tutorial import show_tutorial
 from hand_exit import VictoryExit
@@ -1191,7 +1192,7 @@ def run_game(hand_controller=None):
         except Exception as e:
             print(f"[Doom Wave] HandController 생성 실패: {e}")
 
-    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
+    screen = set_game_mode((WINDOW_WIDTH, HEIGHT))
     pygame.display.set_caption("DOOM WAVE - T CORRIDOR")
 
     clock = pygame.time.Clock()

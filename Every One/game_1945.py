@@ -3,6 +3,7 @@ import os
 import random
 import sys
 import pygame
+from display_utils import set_game_mode
 from font_utils import get_font
 from hand_input import scale_hand_x
 from game_tutorial import show_tutorial
@@ -313,7 +314,7 @@ def run_game(hand_controller=None):
         except Exception as e:
             print(f"[1945] HandController 생성 실패: {e}")
 
-    screen = pygame.display.set_mode((WINDOW_WIDTH, HEIGHT))
+    screen = set_game_mode((WINDOW_WIDTH, HEIGHT))
     pygame.display.set_caption("Every One - 1945 Air Combat")
     clock = pygame.time.Clock()
 

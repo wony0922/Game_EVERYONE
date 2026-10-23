@@ -1,4 +1,5 @@
 import pygame
+from display_utils import set_game_mode
 from font_utils import get_font
 import random
 import os
@@ -83,9 +84,7 @@ def run_game(hand_controller=None):
     # 화면
     # --------------------------------------
 
-    screen = pygame.display.set_mode(
-        (WINDOW_WIDTH, HEIGHT)
-    )
+    screen = set_game_mode((WINDOW_WIDTH, HEIGHT))
 
     pygame.display.set_caption(
         "Mini Pong (Hand Motion Controlled)"

@@ -12,7 +12,7 @@ import time
 import math
 import threading
 import pygame
-from camera_utils import open_camera
+from camera_utils import LatestFrameReader, open_camera
 
 # ══════════════════════════════════════════════════════════
 #  경로 및 기본 설정
@@ -27,6 +27,8 @@ HandLandmarker = mp.tasks.vision.HandLandmarker
 HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 RunningMode = mp.tasks.vision.RunningMode
 HandConnections = mp.tasks.vision.HandLandmarksConnections
+
+PREVIEW_SIZE = (160, 120)
 
 HAND_CONNECTIONS_SET = frozenset(
     (c.start, c.end) for c in HandConnections.HAND_CONNECTIONS
@@ -182,8 +184,13 @@ class HandController:
 
         options = HandLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=model_path_to_use),
-            running_mode=RunningMode.IMAGE,
-            num_hands=1
+            # VIDEO 모드: 이전 프레임의 손 위치를 추적에 재사용하므로
+            # 손이 계속 보이는 동안은 손바닥 검출 단계를 건너뛰어 훨씬 빠르다.
+            running_mode=RunningMode.VIDEO,
+            num_hands=1,
+            min_hand_detection_confidence=0.5,
+            min_hand_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
         )
 
         try:
@@ -193,31 +200,38 @@ class HandController:
             self.running = False
             return
 
+        # 웹캠 기본 해상도(VGA 640x480)로 연다.
         cap = open_camera(self.cam_index, width=640, height=480)
 
-        if not cap.isOpened():
+        if cap is None or not cap.isOpened():
             print(f"[HandController 에러] 카메라를 열 수 없습니다 (index={self.cam_index})")
             landmarker.close()
             self.running = False
             return
 
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # 카메라 읽기를 별도 스레드로 분리해 항상 최신 프레임만 처리한다.
+        reader = LatestFrameReader(cap)
+        frame_id = 0
+        last_timestamp_ms = 0
+        preview_w, preview_h = PREVIEW_SIZE
 
         while self.running:
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                time.sleep(0.01)
+            frame_id, frame = reader.read(frame_id)
+            if frame is None:
                 continue
 
             frame = cv2.flip(frame, 1)
-            h, w, _ = frame.shape
-
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
+            # VIDEO 모드는 타임스탬프가 반드시 증가해야 한다.
+            timestamp_ms = int(time.monotonic() * 1000)
+            if timestamp_ms <= last_timestamp_ms:
+                timestamp_ms = last_timestamp_ms + 1
+            last_timestamp_ms = timestamp_ms
+
             try:
-                result = landmarker.detect(mp_image)
+                result = landmarker.detect_for_video(mp_image, timestamp_ms)
             except Exception:
                 result = None
 
@@ -225,21 +239,27 @@ class HandController:
             hand_x_val = 0.5
             hand_y_val = 0.5
             gesture_val = "None"
+            lm_list = None
 
             if result and result.hand_landmarks:
                 lm_list = result.hand_landmarks[0]
                 detected = True
                 hand_x_val = max(0.0, min(1.0, lm_list[9].x))
                 hand_y_val = max(0.0, min(1.0, lm_list[9].y))
-
                 gesture_val = recognize_gesture(lm_list, self.custom_gestures)
-                draw_hand_landmarks(frame, lm_list)
 
-            cv2.putText(frame, f"Gesture: {gesture_val}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
-
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            small_frame = cv2.resize(frame_rgb, (160, 120))
+            # 미리보기는 작은 화면에만 그려 원본 크기 그리기/변환 비용을 줄인다.
+            small_frame = cv2.resize(
+                rgb_frame, (preview_w, preview_h), interpolation=cv2.INTER_AREA
+            )
+            if lm_list is not None:
+                draw_hand_landmarks(
+                    small_frame, lm_list,
+                    landmark_color=(255, 0, 0), connection_color=(0, 255, 0),
+                    thickness=1, circle_radius=2,
+                )
+            cv2.putText(small_frame, gesture_val, (4, 14),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
 
             with self.lock:
                 self.is_detected = detected
@@ -248,8 +268,7 @@ class HandController:
                 self.gesture = gesture_val
                 self.frame_rgb = small_frame
 
-            time.sleep(0.01)
-
+        reader.stop()
         cap.release()
         landmarker.close()
         print("[HandController] 스레드 정상 종료됨")
