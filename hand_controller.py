@@ -7,6 +7,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import os
+import sys
 import json
 import time
 import math
@@ -186,9 +187,18 @@ class HandController:
         if self.running:
             return
         self.running = True
-        self.thread = threading.Thread(target=self._camera_loop, daemon=True)
+        self.thread = threading.Thread(target=self._safe_camera_loop, daemon=True)
         self.thread.start()
         print("[HandController] 백그라운드 손 동작 인식 스레드 시작됨")
+
+    def _safe_camera_loop(self):
+        try:
+            self._camera_loop()
+        except Exception as e:
+            import traceback
+            print(f"[HandController 오류] 카메라 스레드 예외: {e}")
+            traceback.print_exc()
+            self.running = False
 
     def _camera_loop(self):
         if not os.path.exists(MODEL_PATH):
@@ -224,7 +234,8 @@ class HandController:
             return
 
         is_linux = sys.platform.startswith("linux")
-        cam_w, cam_h = (320, 240) if is_linux else (640, 480)
+        # 웹캠 하드웨어가 표준 지원하는 640x480으로 안전하게 오픈 (320x240 미지원 웹캠 방지)
+        cam_w, cam_h = 640, 480
         cap = open_camera(self.cam_index, width=cam_w, height=cam_h)
 
         if not cap.isOpened():
@@ -236,7 +247,15 @@ class HandController:
         # 최신 프레임 1장만 계속 유지하여 OpenCV 큐 버퍼 지연(밀림)을 원천 차단
         frame_reader = FreshFrameReader(cap)
 
-        # 추론용 다운샘플링 해상도 (라즈베리파이 4 CPU 최적화)
+        # 카메라 워밍업 및 첫 프레임 수신 대기 (최대 1초)
+        start_wait = time.time()
+        while self.running and (time.time() - start_wait < 1.0):
+            ret, _ = frame_reader.read()
+            if ret:
+                break
+            time.sleep(0.05)
+
+        # 추론용 다운샘플링 해상도 (라즈베리파이 4 CPU 최적화: 랜드마크 비율은 동일함)
         infer_size = (256, 192) if is_linux else (320, 240)
 
         while self.running:
@@ -287,9 +306,12 @@ class HandController:
             # CPU 과열 및 무의미한 회전 방지 (라즈베리파이 쿨링 및 응답성 균형)
             time.sleep(0.005)
 
-        frame_reader.stop()
-        cap.release()
-        landmarker.close()
+        try:
+            frame_reader.stop()
+            cap.release()
+            landmarker.close()
+        except Exception:
+            pass
         print("[HandController] 스레드 정상 종료됨")
 
     def get_state(self):

@@ -23,12 +23,6 @@ def _try_open_single(index, width, height, warmup_frames=5):
         cap.release()
 
     if cap is not None and cap.isOpened():
-        # 리눅스/라즈베리파이: 대역폭과 CPU 디코딩 부담을 줄이기 위해 MJPG 및 버퍼 1 설정
-        if sys.platform.startswith("linux"):
-            try:
-                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-            except Exception:
-                pass
         try:
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         except Exception:
@@ -36,6 +30,25 @@ def _try_open_single(index, width, height, warmup_frames=5):
 
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+        # 리눅스/라즈베리파이: MJPG 시도 후 정상 동작하지 않으면 기본값으로 안전 복구
+        if sys.platform.startswith("linux"):
+            try:
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                ret, test_frame = cap.read()
+                if not ret or test_frame is None:
+                    # 웹캠이 MJPG를 지원하지 않으면 기본 V4L2 스트림으로 재오픈
+                    cap.release()
+                    cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
+                    try:
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    except Exception:
+                        pass
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            except Exception:
+                pass
+
         for _ in range(warmup_frames):
             cap.read()
     return cap
