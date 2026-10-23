@@ -92,6 +92,33 @@ if [[ ${#MISSING_PACKAGES[@]} -gt 0 ]]; then
     "${SUDO[@]}" apt-get install -y "${MISSING_PACKAGES[@]}"
 fi
 
+# 사용자 video, audio 그룹 권한 자동 확인 및 추가
+CURRENT_USER="${SUDO_USER:-${USER:-$(id -un)}}"
+MISSING_GROUPS=()
+for grp in video audio; do
+    if ! id -nG "${CURRENT_USER}" 2>/dev/null | grep -qw "${grp}"; then
+        MISSING_GROUPS+=("${grp}")
+    fi
+done
+
+if [[ ${#MISSING_GROUPS[@]} -gt 0 ]]; then
+    printf '사용자(%s) 권한 보장을 위해 %s 그룹에 추가합니다.\n' "${CURRENT_USER}" "${MISSING_GROUPS[*]}"
+    if [[ "${EUID}" -eq 0 ]]; then
+        for grp in "${MISSING_GROUPS[@]}"; do
+            usermod -aG "${grp}" "${CURRENT_USER}" || true
+        done
+    elif command -v sudo >/dev/null 2>&1; then
+        for grp in "${MISSING_GROUPS[@]}"; do
+            sudo usermod -aG "${grp}" "${CURRENT_USER}" || true
+        done
+    fi
+fi
+
+# 카메라 장치 사전 진단
+if ! ls /dev/video* >/dev/null 2>&1; then
+    printf '[안내] /dev/video* 장치가 감지되지 않았습니다. USB 웹캠을 연결해 주세요.\n'
+fi
+
 VENV_DIR="${ROOT_DIR}/.venv-pi"
 VENV_PYTHON="${VENV_DIR}/bin/python"
 if [[ ! -x "${VENV_PYTHON}" ]]; then

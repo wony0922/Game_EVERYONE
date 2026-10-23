@@ -3,6 +3,7 @@ import os
 import queue
 import random
 import subprocess
+import sys
 import tempfile
 import threading
 
@@ -52,30 +53,31 @@ COLOR_ALIASES = {
 
 
 def _find_model_path():
-    """환경 변수 또는 게임 폴더에서 한국어 음성 모델의 위치를 찾는다."""
-    configured_path = os.environ.get("VOSK_MODEL_PATH")
-    if configured_path:
-        if os.path.isdir(configured_path):
-            return configured_path
-        raise RuntimeError(
-            "VOSK_MODEL_PATH 경로가 존재하지 않습니다:\n{}".format(configured_path)
-        )
-
+    """환경 변수 또는 게임 폴더에서 한국어 음성 모델을 찾고, 없으면 자동 다운로드한다."""
     game_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(game_dir, "vosk-model-small-ko-0.22")
-    if os.path.isdir(model_path):
-        return model_path
-
-    legacy_model_path = os.path.join(game_dir, "model")
-    if os.path.isdir(legacy_model_path):
-        return legacy_model_path
-
-    raise RuntimeError(
-        "한국어 Vosk 모델을 찾을 수 없습니다.\n"
-        "다음 폴더에 한국어 Vosk 모델을 압축 해제해 주세요:\n"
-        "{}\n".format(model_path)
-        + "또는 VOSK_MODEL_PATH 환경 변수에 모델 폴더를 지정해 주세요."
-    )
+    parent_dir = os.path.dirname(game_dir)
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    try:
+        from voice_dependencies import ensure_vosk_model
+        return ensure_vosk_model(target_dir=game_dir)
+    except Exception as error:
+        configured_path = os.environ.get("VOSK_MODEL_PATH")
+        if configured_path and os.path.isdir(configured_path):
+            return configured_path
+        model_path = os.path.join(game_dir, "vosk-model-small-ko-0.22")
+        if os.path.isdir(model_path):
+            return model_path
+        legacy_model_path = os.path.join(game_dir, "model")
+        if os.path.isdir(legacy_model_path):
+            return legacy_model_path
+        raise RuntimeError(
+            "한국어 Vosk 모델을 준비하지 못했습니다.\n"
+            f"오류: {error}\n"
+            "다음 폴더에 한국어 Vosk 모델을 압축 해제해 주세요:\n"
+            f"{model_path}\n"
+            "또는 VOSK_MODEL_PATH 환경 변수에 모델 폴더를 지정해 주세요."
+        ) from error
 
 
 def _create_vosk_model_access_path(model_path):

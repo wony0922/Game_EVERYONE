@@ -136,6 +136,36 @@ def draw_hand_landmarks(image, lm_list, connections=HAND_CONNECTIONS_SET,
 # ══════════════════════════════════════════════════════════
 #  HandController 클래스 (스레드 기반)
 # ══════════════════════════════════════════════════════════
+class FreshFrameReader:
+    """OpenCV 카메라 버퍼 지연(Lag)을 방지하기 위해 항상 가장 최신 프레임 1장만 유지하는 리더"""
+    def __init__(self, cap):
+        self.cap = cap
+        self.lock = threading.Lock()
+        self.frame = None
+        self.running = True
+        self.t = threading.Thread(target=self._worker, daemon=True)
+        self.t.start()
+
+    def _worker(self):
+        while self.running and self.cap.isOpened():
+            ret, frame = self.cap.read()
+            if ret and frame is not None:
+                with self.lock:
+                    self.frame = frame
+            else:
+                time.sleep(0.005)
+
+    def read(self):
+        with self.lock:
+            if self.frame is None:
+                return False, None
+            # 원본 유지하며 복사본 반환
+            return True, self.frame.copy()
+
+    def stop(self):
+        self.running = False
+
+
 class HandController:
     def __init__(self, cam_index=0):
         self.cam_index = cam_index
@@ -193,7 +223,9 @@ class HandController:
             self.running = False
             return
 
-        cap = open_camera(self.cam_index, width=640, height=480)
+        is_linux = sys.platform.startswith("linux")
+        cam_w, cam_h = (320, 240) if is_linux else (640, 480)
+        cap = open_camera(self.cam_index, width=cam_w, height=cam_h)
 
         if not cap.isOpened():
             print(f"[HandController 에러] 카메라를 열 수 없습니다 (index={self.cam_index})")
@@ -201,20 +233,24 @@ class HandController:
             self.running = False
             return
 
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # 최신 프레임 1장만 계속 유지하여 OpenCV 큐 버퍼 지연(밀림)을 원천 차단
+        frame_reader = FreshFrameReader(cap)
+
+        # 추론용 다운샘플링 해상도 (라즈베리파이 4 CPU 최적화)
+        infer_size = (256, 192) if is_linux else (320, 240)
 
         while self.running:
-            ret, frame = cap.read()
+            ret, frame = frame_reader.read()
             if not ret or frame is None:
                 time.sleep(0.01)
                 continue
 
             frame = cv2.flip(frame, 1)
-            h, w, _ = frame.shape
 
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+            # MediaPipe 추론용 경량 이미지 생성 (랜드마크 좌표는 0.0~1.0 비율이므로 동일함)
+            infer_frame = cv2.resize(frame, infer_size, interpolation=cv2.INTER_LINEAR)
+            rgb_infer = cv2.cvtColor(infer_frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_infer)
 
             try:
                 result = landmarker.detect(mp_image)
@@ -235,11 +271,11 @@ class HandController:
                 gesture_val = recognize_gesture(lm_list, self.custom_gestures)
                 draw_hand_landmarks(frame, lm_list)
 
-            cv2.putText(frame, f"Gesture: {gesture_val}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Gesture: {gesture_val}", (10, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
 
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            small_frame = cv2.resize(frame_rgb, (160, 120))
+            small_frame = cv2.resize(frame_rgb, (160, 120), interpolation=cv2.INTER_NEAREST)
 
             with self.lock:
                 self.is_detected = detected
@@ -248,8 +284,10 @@ class HandController:
                 self.gesture = gesture_val
                 self.frame_rgb = small_frame
 
-            time.sleep(0.01)
+            # CPU 과열 및 무의미한 회전 방지 (라즈베리파이 쿨링 및 응답성 균형)
+            time.sleep(0.005)
 
+        frame_reader.stop()
         cap.release()
         landmarker.close()
         print("[HandController] 스레드 정상 종료됨")

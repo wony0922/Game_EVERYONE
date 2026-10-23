@@ -122,6 +122,20 @@ def run_game(hand_controller=None):
     victory_exit = VictoryExit(hold_time_ms=1200)
     instruction_back_gesture = VictoryExit(hold_time_ms=1200)
 
+    # 손동작 0.5초(500ms) 유지 판정 변수 (카드 내기/뽑기 오인식 방지)
+    HOLD_ACTION_MS = 500
+    action_hold_gesture = None
+    action_hold_start_time = 0
+    action_armed = True
+
+    # 메인화면 스타일 카드 좌우 캐러셀 스크롤 및 손동작 내비게이션 변수
+    card_scroll_pos = 0.0
+    HAND_SCROLL_LEFT = 0.28
+    HAND_SCROLL_RIGHT = 0.72
+    CARD_NAV_INTERVAL_MS = 640
+    last_card_nav_time = 0
+    card_nav_held = False
+
     # 카드 날아가는 애니메이션 관리 리스트 ([x, y, target_x, target_y, progress, total_frames])
     flying_cards = []
 
@@ -394,11 +408,11 @@ def run_game(hand_controller=None):
 
             instructions = [
                 ("🖐️ 모션 인식 조작법 (오류 방지 안내)", GREEN),
-                ("• [Point (가리키기)] 상태에서 손을 좌우로 이동: 내 패 카드 선택", WHITE),
-                ("  ※ 주먹이나 손바닥을 핀 채로 움직이면 인식이 꼬일 수 있으니 주의하세요!", YELLOW),
-                ("• [주먹 (Fist)]: 선택한 카드 내기 / 메뉴 진행", WHITE),
-                ("• [승리 V (Victory)]: 카드 한 장 뽑기", WHITE),
-                ("• [펴진 손 (Palm)]: 카드 1장 뽑고 턴 넘기기", WHITE),
+                ("• [Point (가리키기)]: 손을 좌/우로 기울여 카드 선택 (메인메뉴 방식)", WHITE),
+                ("  ※ 중앙에 두면 정지, 좌/우로 기울이면 카드가 한 장씩 이동합니다.", WHITE),
+                ("• [주먹 (Fist) 0.5초 유지]: 선택한 카드 내기 / 메뉴 진행", YELLOW),
+                ("• [승리 V (Victory) 또는 펴진 손 (Palm) 0.5초 유지]: 카드 뽑기", YELLOW),
+                ("  ※ 동작을 0.5초 동안 유지해야 발동하여 오인식을 방지합니다!", GREEN),
                 ("", WHITE),
                 ("⌨️ 키보드 조작법", BLUE),
                 ("• ← / → 방향키: 카드 선택  |  ENTER / SPACE: 카드 내기", WHITE),
@@ -447,16 +461,45 @@ def run_game(hand_controller=None):
         if game_state == "SELECTING_SUIT":
             if hand_controller is not None and is_detected:
                 if gesture == "Point":
-                    suit_select_index = int(scale_hand_x(hand_x) * len(SUITS))
-                    suit_select_index = max(0, min(len(SUITS) - 1, suit_select_index))
-                elif gesture == "Fist" and not gesture_locked:
-                    gesture_locked = True
-                    lock_timer = current_time
-                    current_suit = SUITS[suit_select_index]
-                    message = f"문양이 [{current_suit}](으)로 변경되었습니다. AI 턴으로 넘어갑니다."
-                    game_state = "PLAYING"
-                    turn = "AI"
-                    ai_think_end_time = current_time + random.randint(3000, 6000)
+                    action_armed = True
+                    action_hold_gesture = None
+                    action_hold_start_time = 0
+                    scaled_x = scale_hand_x(hand_x)
+                    if scaled_x < HAND_SCROLL_LEFT:
+                        if not card_nav_held or (current_time - last_card_nav_time >= CARD_NAV_INTERVAL_MS):
+                            suit_select_index = (suit_select_index - 1) % len(SUITS)
+                            last_card_nav_time = current_time
+                            card_nav_held = True
+                    elif scaled_x > HAND_SCROLL_RIGHT:
+                        if not card_nav_held or (current_time - last_card_nav_time >= CARD_NAV_INTERVAL_MS):
+                            suit_select_index = (suit_select_index + 1) % len(SUITS)
+                            last_card_nav_time = current_time
+                            card_nav_held = True
+                    else:
+                        card_nav_held = False
+                elif gesture == "Fist" and not gesture_locked and action_armed:
+                    card_nav_held = False
+                    if action_hold_gesture == "Fist":
+                        if current_time - action_hold_start_time >= HOLD_ACTION_MS:
+                            gesture_locked = True
+                            lock_timer = current_time
+                            action_armed = False
+                            action_hold_gesture = None
+                            action_hold_start_time = 0
+                            current_suit = SUITS[suit_select_index]
+                            message = f"문양이 [{current_suit}](으)로 변경되었습니다. AI 턴으로 넘어갑니다."
+                            game_state = "PLAYING"
+                            turn = "AI"
+                            ai_think_end_time = current_time + random.randint(3000, 6000)
+                    else:
+                        action_hold_gesture = "Fist"
+                        action_hold_start_time = current_time
+                else:
+                    card_nav_held = False
+                    action_hold_gesture = None
+                    action_hold_start_time = 0
+                    if gesture in ("None", "Unknown"):
+                        action_armed = True
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -473,32 +516,107 @@ def run_game(hand_controller=None):
                         turn = "AI"
                         ai_think_end_time = current_time + random.randint(3000, 6000)
 
+            # --- 7 발동 화면 렌더링 ---
             screen.fill(BG_COLOR)
-            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 180))
-            screen.blit(overlay, (0, 0))
 
-            title_s = font_board_title.render("♠ 숫자 7 발동! 변경할 문양을 선택하세요 ♠", True, YELLOW)
-            screen.blit(title_s, (WIDTH // 2 - title_s.get_width() // 2, HEIGHT // 2 - 120))
+            # 상단 정보 바
+            top_bar = pygame.Rect(20, 18, WIDTH - 40, 44)
+            pygame.draw.rect(screen, PANEL_BG, top_bar, border_radius=8)
+            pygame.draw.rect(screen, GRAY, top_bar, 2, border_radius=8)
+            ai_txt = font_main.render(f"🤖 상대(AI) 남은 카드: {len(ai_hand)}장", True, WHITE)
+            screen.blit(ai_txt, (35, 29))
+            top_status = font_main.render("★ 7 카드 발동: 문양 변경 중 ★", True, YELLOW)
+            screen.blit(top_status, (WIDTH - top_status.get_width() - 35, 29))
 
-            card_w, card_h = 100, 140
-            start_x = WIDTH // 2 - (len(SUITS) * 115) // 2
+            # 하단 플레이어 손패 (내 덱을 직접 보며 선택할 수 있도록 표시)
+            hand_card_w, hand_card_h = 70, 95
+            total_hand_w = len(player_hand) * 78
+            hand_start_x = WIDTH // 2 - total_hand_w // 2
+            hand_title = font_small.render(f"📋 내 손패 ({len(player_hand)}장) - 바꿀 문양을 참고하세요:", True, (200, 240, 210))
+            screen.blit(hand_title, (35, HEIGHT - 132))
+
+            for i, card in enumerate(player_hand):
+                cx = hand_start_x + i * 78
+                cy = HEIGHT - 110
+                crect = pygame.Rect(cx, cy, hand_card_w, hand_card_h)
+                pygame.draw.rect(screen, WHITE, crect, border_radius=6)
+                pygame.draw.rect(screen, DARK_GRAY, crect, 2, border_radius=6)
+                col = SUIT_COLORS.get(card.suit, BLACK)
+                if card.suit == 'JOKER':
+                    st = font_small.render("JOKER", True, PURPLE)
+                    rt = font_small.render(card.rank, True, PURPLE)
+                    screen.blit(st, (cx + 8, cy + 12))
+                    screen.blit(rt, (cx + hand_card_w // 2 - rt.get_width() // 2, cy + 40))
+                else:
+                    st = font_small.render(card.suit, True, col)
+                    rt = font_card_num.render(card.rank, True, col)
+                    screen.blit(st, (cx + 6, cy + 6))
+                    screen.blit(rt, (cx + hand_card_w // 2 - rt.get_width() // 2, cy + 32))
+
+            # 중앙 문양 선택 모달 박스
+            modal_rect = pygame.Rect(40, 72, WIDTH - 80, 365)
+            pygame.draw.rect(screen, (22, 35, 28), modal_rect, border_radius=12)
+            pygame.draw.rect(screen, YELLOW, modal_rect, 3, border_radius=12)
+
+            title_s = font_board_title.render("♠ 변경할 문양을 선택하세요 ♠", True, YELLOW)
+            screen.blit(title_s, (WIDTH // 2 - title_s.get_width() // 2, 88))
+
+            # 문양별 내 손패 개수 카운트
+            suit_counts = {s: sum(1 for c in player_hand if c.suit == s) for s in SUITS}
+
+            m_card_w, m_card_h = 100, 140
+            start_x = WIDTH // 2 - (len(SUITS) * 125) // 2
             for i, s in enumerate(SUITS):
-                cx = start_x + i * 115
-                cy = HEIGHT // 2 - 50
+                cx = start_x + i * 125
+                cy = 138
                 is_sel = (i == suit_select_index)
-                crect = pygame.Rect(cx, cy, card_w, card_h)
+                crect = pygame.Rect(cx, cy, m_card_w, m_card_h)
 
                 pygame.draw.rect(screen, (255, 255, 240) if is_sel else WHITE, crect, border_radius=10)
                 pygame.draw.rect(screen, YELLOW if is_sel else DARK_GRAY, crect, 4 if is_sel else 2, border_radius=10)
 
                 col = SUIT_COLORS[s]
                 st_surf = font_card_suit.render(s, True, col)
-                screen.blit(st_surf, (cx + card_w // 2 - st_surf.get_width() // 2, cy + 45))
+                screen.blit(st_surf, (cx + m_card_w // 2 - st_surf.get_width() // 2, cy + 22))
 
-            guide_s = font_main.render("Point로 좌우 이동 후 [주먹/Enter]로 선택", True, WHITE)
-            screen.blit(guide_s, (WIDTH // 2 - guide_s.get_width() // 2, HEIGHT // 2 + 120))
+                # 내 손패에 있는 장수 표시 뱃지
+                cnt = suit_counts[s]
+                cnt_box = pygame.Rect(cx + 8, cy + 96, m_card_w - 16, 30)
+                pygame.draw.rect(screen, (230, 240, 235) if cnt > 0 else (240, 240, 240), cnt_box, border_radius=6)
+                pygame.draw.rect(screen, GREEN if cnt > 0 else GRAY, cnt_box, 1, border_radius=6)
+                cnt_txt = font_small.render(f"보유: {cnt}장", True, GREEN if cnt > 0 else GRAY)
+                screen.blit(cnt_txt, (cx + m_card_w // 2 - cnt_txt.get_width() // 2, cy + 102))
 
+            # 주먹 0.5초 유지 게이지 바
+            if action_hold_gesture == "Fist" and action_hold_start_time > 0:
+                prog = min(1.0, (current_time - action_hold_start_time) / HOLD_ACTION_MS)
+                bar_w = 220
+                bar_h = 14
+                bar_x = WIDTH // 2 - bar_w // 2
+                bar_y = 320
+                pygame.draw.rect(screen, (50, 50, 50), (bar_x, bar_y, bar_w, bar_h), border_radius=7)
+                pygame.draw.rect(screen, YELLOW, (bar_x, bar_y, int(bar_w * prog), bar_h), border_radius=7)
+                pygame.draw.rect(screen, WHITE, (bar_x, bar_y, bar_w, bar_h), 2, border_radius=7)
+                txt_hold = font_small.render(f"선택 유지 중... {int(prog * 100)}%", True, YELLOW)
+                screen.blit(txt_hold, (WIDTH // 2 - txt_hold.get_width() // 2, bar_y - 20))
+
+            guide_s = font_main.render("Point로 좌우 이동  |  [주먹 0.5초/Enter]로 확정", True, WHITE)
+            screen.blit(guide_s, (WIDTH // 2 - guide_s.get_width() // 2, 350))
+
+            # 우측 웹캠 패널 렌더링
+            if hand_controller is not None:
+                panel_title = font_small.render("WEBCAM", True, BLUE)
+                screen.blit(panel_title, (WIDTH + (CAMERA_PANEL_WIDTH - panel_title.get_width()) // 2, CAMERA_PREVIEW_Y - 32))
+                preview = hand_controller.get_preview_surface()
+                if preview is not None:
+                    pygame.draw.rect(screen, BLUE, (CAMERA_PREVIEW_X - 2, CAMERA_PREVIEW_Y - 2, CAMERA_PREVIEW_SIZE[0] + 4, CAMERA_PREVIEW_SIZE[1] + 4), 2)
+                    preview = pygame.transform.smoothscale(preview, CAMERA_PREVIEW_SIZE)
+                    screen.blit(preview, (CAMERA_PREVIEW_X, CAMERA_PREVIEW_Y))
+
+                st_text = font_small.render(f"Gesture: {gesture}", True, GREEN if is_detected else RED)
+                screen.blit(st_text, (WIDTH + (CAMERA_PANEL_WIDTH - st_text.get_width()) // 2, CAMERA_PREVIEW_Y + CAMERA_PREVIEW_SIZE[1] + 14))
+
+            pygame.draw.line(screen, WHITE, (WIDTH, 0), (WIDTH, HEIGHT), 2)
             pygame.display.flip()
             continue
 
@@ -518,53 +636,88 @@ def run_game(hand_controller=None):
 
         if hand_controller is not None:
             if is_detected and not game_over and turn == "PLAYER":
-                if gesture == "Point" and player_hand:
-                    selected_index = int(scale_hand_x(hand_x) * len(player_hand))
-                    selected_index = max(0, min(len(player_hand) - 1, selected_index))
-
-                if gesture == "Fist" and not gesture_locked:
-                    gesture_locked = True
-                    lock_timer = current_time
+                if gesture == "Point":
+                    action_armed = True
+                    action_hold_gesture = None
+                    action_hold_start_time = 0
                     if player_hand:
-                        card = player_hand[selected_index]
-                        top_card = discard_pile[-1]
-                        if is_playable(card, top_card, current_suit, attack_stack):
-                            discard_pile.append(player_hand.pop(selected_index))
-                            selected_index = max(0, selected_index - 1)
-                            if not player_hand:
-                                game_over = True
-                                winner = "PLAYER"
-                            else:
-                                keep_turn = apply_card_effect(card)
-                                if game_state != "SELECTING_SUIT" and not keep_turn:
-                                    turn = "AI"
-                                    ai_think_end_time = current_time + random.randint(3000, 6000)
-                                    turn_start_time = pygame.time.get_ticks()
+                        scaled_x = scale_hand_x(hand_x)
+                        if scaled_x < HAND_SCROLL_LEFT:
+                            if not card_nav_held or (current_time - last_card_nav_time >= CARD_NAV_INTERVAL_MS):
+                                selected_index = (selected_index - 1) % len(player_hand)
+                                last_card_nav_time = current_time
+                                card_nav_held = True
+                        elif scaled_x > HAND_SCROLL_RIGHT:
+                            if not card_nav_held or (current_time - last_card_nav_time >= CARD_NAV_INTERVAL_MS):
+                                selected_index = (selected_index + 1) % len(player_hand)
+                                last_card_nav_time = current_time
+                                card_nav_held = True
                         else:
-                            message = "이 카드는 낼 수 없습니다!"
+                            card_nav_held = False
 
-                elif gesture == "Victory" and not gesture_locked:
-                    gesture_locked = True
-                    lock_timer = current_time
-                    draw_count = attack_stack if attack_stack > 0 else 1
-                    draw_cards(player_hand, draw_count, "PLAYER")
-                    message = f"카드를 {draw_count}장 뽑았습니다. AI 차례로 넘어갑니다."
-                    attack_stack = 0
-                    turn = "AI"
-                    ai_think_end_time = current_time + random.randint(3000, 6000)
+                elif gesture in ("Fist", "Victory", "Open Palm") and not gesture_locked and action_armed:
+                    card_nav_held = False
+                    if action_hold_gesture == gesture:
+                        if current_time - action_hold_start_time >= HOLD_ACTION_MS:
+                            # 0.5초 지속 유지 완료 -> 실제 동작 실행!
+                            gesture_locked = True
+                            lock_timer = current_time
+                            action_armed = False
+                            action_hold_gesture = None
+                            action_hold_start_time = 0
 
-                elif gesture == "Open Palm" and not gesture_locked:
-                    gesture_locked = True
-                    lock_timer = current_time
-                    draw_count = attack_stack if attack_stack > 0 else 1
-                    draw_cards(player_hand, draw_count, "PLAYER")
-                    if attack_stack > 0:
-                        message = f"공격 방어 실패! 카드 {draw_count}장을 먹고 턴을 넘깁니다."
-                        attack_stack = 0
+                            if gesture == "Fist":
+                                if player_hand:
+                                    card = player_hand[selected_index]
+                                    top_card = discard_pile[-1]
+                                    if is_playable(card, top_card, current_suit, attack_stack):
+                                        discard_pile.append(player_hand.pop(selected_index))
+                                        selected_index = max(0, selected_index - 1)
+                                        if not player_hand:
+                                            game_over = True
+                                            winner = "PLAYER"
+                                        else:
+                                            keep_turn = apply_card_effect(card)
+                                            if game_state != "SELECTING_SUIT" and not keep_turn:
+                                                turn = "AI"
+                                                ai_think_end_time = current_time + random.randint(3000, 6000)
+                                                turn_start_time = pygame.time.get_ticks()
+                                    else:
+                                        message = "이 카드는 낼 수 없습니다!"
+
+                            elif gesture == "Victory":
+                                draw_count = attack_stack if attack_stack > 0 else 1
+                                draw_cards(player_hand, draw_count, "PLAYER")
+                                message = f"카드를 {draw_count}장 뽑았습니다. AI 차례로 넘어갑니다."
+                                attack_stack = 0
+                                turn = "AI"
+                                ai_think_end_time = current_time + random.randint(3000, 6000)
+
+                            elif gesture == "Open Palm":
+                                draw_count = attack_stack if attack_stack > 0 else 1
+                                draw_cards(player_hand, draw_count, "PLAYER")
+                                if attack_stack > 0:
+                                    message = f"공격 방어 실패! 카드 {draw_count}장을 먹고 턴을 넘깁니다."
+                                    attack_stack = 0
+                                else:
+                                    message = "카드 1장을 뽑고 턴을 넘깁니다."
+                                turn = "AI"
+                                ai_think_end_time = current_time + random.randint(3000, 6000)
                     else:
-                        message = "카드 1장을 뽑고 턴을 넘깁니다."
-                    turn = "AI"
-                    ai_think_end_time = current_time + random.randint(3000, 6000)
+                        action_hold_gesture = gesture
+                        action_hold_start_time = current_time
+                else:
+                    card_nav_held = False
+                    action_hold_gesture = None
+                    action_hold_start_time = 0
+                    if gesture in ("None", "Unknown"):
+                        action_armed = True
+            else:
+                card_nav_held = False
+                action_hold_gesture = None
+                action_hold_start_time = 0
+                if not is_detected:
+                    action_armed = True
 
         # --- 키보드 입력: 카드 내기, 뽑기, 넘기기, 재시작 ---
         for event in pygame.event.get():
@@ -714,6 +867,15 @@ def run_game(hand_controller=None):
         deck_label = font_small.render("DECK", True, WHITE)
         screen.blit(deck_label, (WIDTH // 2 - 110 - deck_label.get_width() // 2, HEIGHT // 2 - 25))
 
+        # 덱 위에 뽑기 홀드 게이지 표시
+        if action_hold_gesture in ("Victory", "Open Palm") and action_hold_start_time > 0 and turn == "PLAYER":
+            prog = min(1.0, (current_time - action_hold_start_time) / HOLD_ACTION_MS)
+            pygame.draw.rect(screen, (40, 40, 50), (WIDTH // 2 - 160, HEIGHT // 2 - 105, 100, 14), border_radius=7)
+            pygame.draw.rect(screen, BLUE, (WIDTH // 2 - 160, HEIGHT // 2 - 105, int(100 * prog), 14), border_radius=7)
+            pygame.draw.rect(screen, WHITE, (WIDTH // 2 - 160, HEIGHT // 2 - 105, 100, 14), 2, border_radius=7)
+            deck_hold_txt = font_small.render(f"뽑기 {int(prog * 100)}%", True, YELLOW)
+            screen.blit(deck_hold_txt, (WIDTH // 2 - 110 - deck_hold_txt.get_width() // 2, HEIGHT // 2 - 124))
+
         # 2. 버린 카드 더미 (Discard Pile) 그리기
         top_card = discard_pile[-1]
         pile_rect = pygame.Rect(WIDTH // 2 - 40, HEIGHT // 2 - 85, 100, 140)
@@ -754,37 +916,90 @@ def run_game(hand_controller=None):
             if fc['progress'] >= fc['total']:
                 flying_cards.remove(fc)
 
-        # 하단 플레이어 패 그리기
+        # 하단 플레이어 패 그리기 (메인화면 스타일 캐러셀 스크롤)
         card_w, card_h = 80, 115
-        total_w = len(player_hand) * 90
-        start_x = WIDTH // 2 - total_w // 2
+        card_spacing = 92
+        if player_hand:
+            # 부드러운 Lerp 스크롤: 선택된 카드가 화면 중앙으로 이동
+            card_scroll_target = float(selected_index)
+            card_scroll_pos += (card_scroll_target - card_scroll_pos) * 0.15
+            if abs(card_scroll_target - card_scroll_pos) < 0.01:
+                card_scroll_pos = card_scroll_target
 
-        for i, card in enumerate(player_hand):
-            cx = start_x + i * 90
-            cy = HEIGHT - 165
-            is_selected = (i == selected_index)
+            center_x = WIDTH // 2 - card_w // 2
 
-            if is_selected:
-                cy -= 15
+            # 좌우 스크롤 손동작 상태 감지
+            left_active = False
+            right_active = False
+            if hand_controller is not None and is_detected and gesture == "Point":
+                scaled_x = scale_hand_x(hand_x)
+                if scaled_x < HAND_SCROLL_LEFT:
+                    left_active = True
+                elif scaled_x > HAND_SCROLL_RIGHT:
+                    right_active = True
 
-            crect = pygame.Rect(cx, cy, card_w, card_h)
-            bg_col = (255, 255, 240) if is_selected else WHITE
-            border_col = YELLOW if is_selected else DARK_GRAY
+            # 화면 좌우 스크롤 안내 화살표 (메인화면 스타일)
+            l_arrow_col = YELLOW if left_active else (80, 120, 90)
+            r_arrow_col = YELLOW if right_active else (80, 120, 90)
+            l_surf = font_board_title.render("◀", True, l_arrow_col)
+            r_surf = font_board_title.render("▶", True, r_arrow_col)
+            screen.blit(l_surf, (22, HEIGHT - 115))
+            screen.blit(r_surf, (WIDTH - 42, HEIGHT - 115))
 
-            pygame.draw.rect(screen, bg_col, crect, border_radius=8)
-            pygame.draw.rect(screen, border_col, crect, 3 if is_selected else 2, border_radius=8)
+            # 카드 장수 및 현재 선택 위치 표시 (예: "3 / 7")
+            idx_txt = font_small.render(f"카드 선택: [{selected_index + 1} / {len(player_hand)}]", True, YELLOW if turn == "PLAYER" else GRAY)
+            screen.blit(idx_txt, (WIDTH // 2 - idx_txt.get_width() // 2, HEIGHT - 188))
 
-            col = SUIT_COLORS.get(card.suit, BLACK)
-            if card.suit == 'JOKER':
-                st = font_small.render("JOKER", True, PURPLE)
-                rt = font_small.render(card.rank, True, PURPLE)
-                screen.blit(st, (cx + 12, cy + 20))
-                screen.blit(rt, (cx + card_w // 2 - rt.get_width() // 2, cy + 50))
-            else:
-                st = font_small.render(card.suit, True, col)
-                rt = font_card_num.render(card.rank, True, col)
-                screen.blit(st, (cx + 8, cy + 8))
-                screen.blit(rt, (cx + card_w // 2 - rt.get_width() // 2, cy + 42))
+            # 좌우 경계 내에서만 카드를 그리는 클리핑 영역
+            cards_clip_rect = pygame.Rect(50, HEIGHT - 195, WIDTH - 100, 160)
+            screen.set_clip(cards_clip_rect)
+
+            for i, card in enumerate(player_hand):
+                offset_from_center = i - card_scroll_pos
+                cx = int(center_x + offset_from_center * card_spacing)
+                cy = HEIGHT - 165
+                is_selected = (i == selected_index)
+
+                if is_selected:
+                    cy -= 15
+
+                # 화면 표시 영역을 크게 벗어난 카드는 렌더링 건너뜀
+                if cx < -120 or cx > WIDTH + 120:
+                    continue
+
+                crect = pygame.Rect(cx, cy, card_w, card_h)
+                bg_col = (255, 255, 240) if is_selected else WHITE
+                border_col = YELLOW if is_selected else DARK_GRAY
+
+                pygame.draw.rect(screen, bg_col, crect, border_radius=8)
+                pygame.draw.rect(screen, border_col, crect, 3 if is_selected else 2, border_radius=8)
+
+                col = SUIT_COLORS.get(card.suit, BLACK)
+                if card.suit == 'JOKER':
+                    st = font_small.render("JOKER", True, PURPLE)
+                    rt = font_small.render(card.rank, True, PURPLE)
+                    screen.blit(st, (cx + 12, cy + 20))
+                    screen.blit(rt, (cx + card_w // 2 - rt.get_width() // 2, cy + 50))
+                else:
+                    st = font_small.render(card.suit, True, col)
+                    rt = font_card_num.render(card.rank, True, col)
+                    screen.blit(st, (cx + 8, cy + 8))
+                    screen.blit(rt, (cx + card_w // 2 - rt.get_width() // 2, cy + 42))
+
+            # 선택된 카드 위에 카드 내기 홀드 게이지 표시
+            if action_hold_gesture == "Fist" and action_hold_start_time > 0 and turn == "PLAYER":
+                sel_cx = int(center_x + (selected_index - card_scroll_pos) * card_spacing)
+                sel_cy = HEIGHT - 180
+                prog = min(1.0, (current_time - action_hold_start_time) / HOLD_ACTION_MS)
+                bar_w = card_w
+                bar_h = 10
+                pygame.draw.rect(screen, (40, 40, 50), (sel_cx, sel_cy - 14, bar_w, bar_h), border_radius=5)
+                pygame.draw.rect(screen, GREEN, (sel_cx, sel_cy - 14, int(bar_w * prog), bar_h), border_radius=5)
+                pygame.draw.rect(screen, WHITE, (sel_cx, sel_cy - 14, bar_w, bar_h), 2, border_radius=5)
+                hold_txt = font_small.render(f"내기 {int(prog * 100)}%", True, YELLOW)
+                screen.blit(hold_txt, (sel_cx + bar_w // 2 - hold_txt.get_width() // 2, sel_cy - 30))
+
+            screen.set_clip(None)
 
         msg_bar = pygame.Rect(20, HEIGHT - 220, WIDTH - 40, 40)
         pygame.draw.rect(screen, PANEL_BG, msg_bar, border_radius=6)
@@ -793,7 +1008,7 @@ def run_game(hand_controller=None):
         screen.blit(msg_surf, (35, HEIGHT - 212))
 
         if hand_controller is not None:
-            guide = "Point: 선택 | Fist: 내기 | Victory: 뽑기/메뉴(1.2초 유지) | Palm: 1장 뽑고 넘기기"
+            guide = "Point: 좌/우 기울여 카드 선택 | Fist(0.5초): 내기 | Victory/Palm(0.5초): 뽑기"
         else:
             guide = "←/→: 카드 선택 | ENTER: 카드 내기 | D: 뽑기 | P: 1장 뽑고 넘기기"
         g_surf = font_small.render(guide, True, GRAY)
@@ -823,6 +1038,21 @@ def run_game(hand_controller=None):
 
             st_text = font_small.render(f"Gesture: {gesture}", True, GREEN if is_detected else RED)
             screen.blit(st_text, (WIDTH + (CAMERA_PANEL_WIDTH - st_text.get_width()) // 2, CAMERA_PREVIEW_Y + CAMERA_PREVIEW_SIZE[1] + 14))
+
+            if action_hold_gesture is not None and action_hold_start_time > 0 and turn == "PLAYER":
+                prog = min(1.0, (current_time - action_hold_start_time) / HOLD_ACTION_MS)
+                action_name = "카드 내기" if action_hold_gesture == "Fist" else "카드 뽑기"
+                hold_lbl = font_small.render(f"{action_name} ({int(prog * 100)}%)", True, YELLOW)
+                screen.blit(hold_lbl, (WIDTH + (CAMERA_PANEL_WIDTH - hold_lbl.get_width()) // 2, CAMERA_PREVIEW_Y + CAMERA_PREVIEW_SIZE[1] + 34))
+
+                pbar_w = 140
+                pbar_h = 8
+                pbar_x = WIDTH + (CAMERA_PANEL_WIDTH - pbar_w) // 2
+                pbar_y = CAMERA_PREVIEW_Y + CAMERA_PREVIEW_SIZE[1] + 52
+                pygame.draw.rect(screen, (50, 50, 60), (pbar_x, pbar_y, pbar_w, pbar_h), border_radius=4)
+                pbar_col = GREEN if action_hold_gesture == "Fist" else BLUE
+                pygame.draw.rect(screen, pbar_col, (pbar_x, pbar_y, int(pbar_w * prog), pbar_h), border_radius=4)
+                pygame.draw.rect(screen, WHITE, (pbar_x, pbar_y, pbar_w, pbar_h), 1, border_radius=4)
 
         pygame.draw.line(screen, WHITE, (WIDTH, 0), (WIDTH, HEIGHT), 2)
         pygame.display.flip()
