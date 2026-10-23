@@ -212,13 +212,26 @@ class VoiceRecognizer:
     def _listen(self):
         """마이크 큐를 처리하고 라운드 종료 시 Vosk 최종 결과를 확정한다."""
         try:
-            with self._sounddevice.RawInputStream(
-                samplerate=16000,
-                blocksize=8000,
-                dtype="int16",
-                channels=1,
-                callback=self._audio_callback,
-            ):
+            # 라즈베리파이/PC: 기본 입력 장치가 없을 때 사용 가능한 마이크 자동 탐색
+            stream_kwargs = {
+                "samplerate": 16000,
+                "blocksize": 8000,
+                "dtype": "int16",
+                "channels": 1,
+                "callback": self._audio_callback,
+            }
+            try:
+                parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                if parent_dir not in sys.path:
+                    sys.path.insert(0, parent_dir)
+                from voice_dependencies import get_valid_input_device
+                input_dev = get_valid_input_device(self._sounddevice)
+                if input_dev is not None:
+                    stream_kwargs["device"] = input_dev
+            except Exception:
+                pass
+
+            with self._sounddevice.RawInputStream(**stream_kwargs):
                 while not self._stop_event.is_set():
                     if self._finish_round.is_set():
                         while True:

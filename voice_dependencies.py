@@ -149,3 +149,37 @@ def ensure_vosk_model(target_dir=None):
         ) from error
 
     return os.path.abspath(dest_model_path)
+
+
+def get_valid_input_device(sd):
+    """
+    라즈베리파이 및 PC 환경에서 사용 가능한 마이크 장치(인덱스)를 자동 탐색합니다.
+    라즈베리파이는 기본 입력 장치(Default)가 지정되지 않는 경우가 많으므로
+    실제 마이크 채널(max_input_channels > 0)을 가진 장치를 찾아 반환합니다.
+    """
+    if sd is None:
+        return None
+
+    # 1. 기본 장치가 유효한 입력 장치인지 확인
+    try:
+        default_in = sd.default.device[0]
+        if default_in is not None and default_in >= 0:
+            dev_info = sd.query_devices(default_in, "input")
+            if dev_info.get("max_input_channels", 0) > 0:
+                return default_in
+    except Exception:
+        pass
+
+    # 2. 유효하지 않다면 전체 장치 목록에서 실제 마이크 검색
+    try:
+        devices = sd.query_devices()
+        for idx, dev in enumerate(devices):
+            if dev.get("max_input_channels", 0) > 0:
+                name = dev.get("name", "Unknown")
+                print(f"[음성인식] 마이크 입력 장치 자동 감지: {name} (인덱스 {idx})")
+                return idx
+    except Exception as e:
+        print(f"[음성인식] 오디오 장치 탐색 오류: {e}")
+
+    return None
+

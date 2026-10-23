@@ -366,13 +366,25 @@ class VoiceRecognizer:
     def _listen(self):
         """오디오를 순차 처리해 턴별 문법으로 확정된 음성 결과를 전달한다."""
         try:
-            with self._sounddevice.RawInputStream(
-                samplerate=self.native_rate,
-                blocksize=8000,
-                dtype="int16",
-                channels=1,
-                callback=self._audio_callback,
-            ):
+            stream_kwargs = {
+                "samplerate": self.native_rate,
+                "blocksize": 8000,
+                "dtype": "int16",
+                "channels": 1,
+                "callback": self._audio_callback,
+            }
+            try:
+                parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                if parent_dir not in sys.path:
+                    sys.path.insert(0, parent_dir)
+                from voice_dependencies import get_valid_input_device
+                input_dev = get_valid_input_device(self._sounddevice)
+                if input_dev is not None:
+                    stream_kwargs["device"] = input_dev
+            except Exception:
+                pass
+
+            with self._sounddevice.RawInputStream(**stream_kwargs):
                 while not self._stop_event.is_set():
                     current_num = None
                     generation = None
