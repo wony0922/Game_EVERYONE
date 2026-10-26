@@ -19,6 +19,7 @@ from game_369 import run_game as run_369_game
 from game_one_card import run_game as run_one_card_game
 from doom_classic import run_game as run_doom_classic
 from supertuxkart_game import run_game as run_supertuxkart
+from mario_game import run_game as run_mario
 
 try:
     from hand_controller import HandController
@@ -80,6 +81,7 @@ def main():
         ("ONE CARD", "카드를 내고 먼저\n손패를 비우세요.", run_one_card_game),
         ("DOOM", "원조 둠을 손동작으로!\n주먹 발사, V 1초 유지로 종료.", run_doom_classic),
         ("SUPERTUXKART", "손으로 핸들을 잡고 달리세요!\n주먹 브레이크, 가리키기 아이템.", run_supertuxkart),
+        ("MARIO", "손을 기울여 달리고\n주먹을 쥐어 점프하세요!", run_mario),
     ]
     carousel_position = 0.0
     carousel_target = 0.0
