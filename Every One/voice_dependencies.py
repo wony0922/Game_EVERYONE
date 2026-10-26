@@ -1,8 +1,8 @@
 ﻿"""
 voice_dependencies.py
 ─────────────────────
-게임 실행 시 vosk 한국어 모델이 없으면
-GitHub Releases에서 자동으로 다운로드·압축 해제한다.
+게임 실행 시 vosk/sounddevice 패키지와 한국어 모델이 없으면
+자동으로 설치·다운로드한다.
 """
 
 import os
@@ -24,12 +24,12 @@ _RELEASE_URL = (
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def _print(msg: str, end: str = "\n") -> None:
+def _print(msg, end="\n"):
     """표준 출력과 flush를 함께 처리한다."""
     print(msg, end=end, flush=True)
 
 
-def _download_with_progress(url: str, dest: str) -> None:
+def _download_with_progress(url, dest):
     """URL을 dest 경로로 다운로드하며 진행률을 출력한다."""
 
     def _reporthook(block_num, block_size, total_size):
@@ -56,23 +56,7 @@ def _download_with_progress(url: str, dest: str) -> None:
 def ensure_vosk_model(target_dir=None):
     """
     vosk 모델 폴더 경로를 반환한다.
-
     모델이 없으면 GitHub Releases에서 자동 다운로드한다.
-
-    Parameters
-    ----------
-    target_dir : str | None
-        모델을 저장할 디렉터리. None 이면 이 파일이 위치한 폴더를 사용한다.
-
-    Returns
-    -------
-    str
-        다운로드·확인이 완료된 모델 폴더의 절대 경로.
-
-    Raises
-    ------
-    RuntimeError
-        다운로드에 실패하거나 압축 해제 후에도 폴더가 없을 때.
     """
     if target_dir is None:
         target_dir = os.path.dirname(os.path.abspath(__file__))
@@ -82,7 +66,6 @@ def ensure_vosk_model(target_dir=None):
     if os.path.isdir(model_path):
         return model_path
 
-    # ── 모델 폴더가 없으므로 다운로드 ────────────────────────────────────────
     _print("=" * 60)
     _print("  한국어 Vosk 음성 모델이 없습니다.")
     _print("  GitHub Releases에서 자동으로 다운로드합니다.")
@@ -114,7 +97,6 @@ def ensure_vosk_model(target_dir=None):
                 "다운로드된 파일이 올바른 ZIP이 아닙니다. "
                 "Release 첨부 파일을 확인하세요."
             ) from exc
-
     finally:
         try:
             os.remove(zip_path)
@@ -138,3 +120,72 @@ def ensure_vosk_model(target_dir=None):
     _print(f"  ✓ 모델 준비 완료: {model_path}")
     _print("=" * 60)
     return model_path
+
+
+def ensure_voice_dependencies():
+    """
+    vosk 와 sounddevice 패키지가 설치돼 있는지 확인하고,
+    없으면 pip으로 자동 설치한다.
+    """
+    _REQUIRED = {
+        "vosk": "vosk",
+        "sounddevice": "sounddevice",
+    }
+
+    missing = []
+    for module_name, pip_name in _REQUIRED.items():
+        try:
+            __import__(module_name)
+        except ImportError:
+            missing.append(pip_name)
+
+    if not missing:
+        return
+
+    _print("=" * 60)
+    _print(f"  음성인식 패키지가 없습니다: {', '.join(missing)}")
+    _print("  pip으로 자동 설치합니다...")
+    _print("=" * 60)
+
+    import subprocess
+
+    for pkg in missing:
+        _print(f"  설치 중: {pkg}")
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", pkg],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"패키지 설치 실패: {pkg}\n{result.stderr.strip()}"
+            )
+        _print(f"  ✓ 설치 완료: {pkg}")
+
+    _print("=" * 60)
+
+
+def get_valid_input_device(sounddevice):
+    """
+    사용 가능한 마이크 입력 장치 인덱스를 반환한다.
+    기본 장치가 없거나 오류 시 입력 채널이 있는 첫 번째 장치를 반환한다.
+    아무것도 없으면 None 반환.
+    """
+    try:
+        default = sounddevice.default.device[0]
+        if default is not None and default >= 0:
+            devices = sounddevice.query_devices()
+            if devices[default]["max_input_channels"] > 0:
+                return None
+    except Exception:
+        pass
+
+    try:
+        devices = sounddevice.query_devices()
+        for idx, dev in enumerate(devices):
+            if dev.get("max_input_channels", 0) > 0:
+                return idx
+    except Exception:
+        pass
+
+    return None
