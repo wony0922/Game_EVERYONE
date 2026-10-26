@@ -4,3 +4,5 @@ __pycache__/
 Thumbs.db
 *.log
 *.metadata.json
+.venv-pi/
+Every One/doom_data/
