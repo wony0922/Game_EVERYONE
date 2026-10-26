@@ -3,6 +3,7 @@ import os
 import random
 import sys
 import pygame
+from display_utils import set_game_mode
 from font_utils import get_font
 from hand_input import scale_hand_x
 from game_tutorial import show_tutorial

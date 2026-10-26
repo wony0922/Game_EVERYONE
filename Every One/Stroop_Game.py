@@ -8,6 +8,7 @@ import tempfile
 import threading
 
 import pygame
+from display_utils import set_game_mode
 from font_utils import get_font
 
 from game_tutorial import show_tutorial
@@ -131,11 +132,32 @@ def _create_vosk_model_access_path(model_path):
     return junction_path, temp_dir
 
 
+def _drain_queue(target_queue):
+    try:
+        while True:
+            target_queue.get_nowait()
+    except queue.Empty:
+        pass
+
+
+def _contains_color_word(text):
+    normalized = text.replace(" ", "")
+    return any(
+        alias in normalized
+        for aliases in COLOR_ALIASES.values()
+        for alias in aliases
+    )
+
+
 class VoiceRecognizer:
     """마이크 입력을 큐로 받아 색깔 단어만 Vosk로 인식한다."""
     def __init__(self):
         try:
-            from voice_dependencies import ensure_voice_dependencies
+            from voice_dependencies import (
+                block_size_for,
+                ensure_voice_dependencies,
+                pick_input_samplerate,
+            )
 
             ensure_voice_dependencies()
             import sounddevice
@@ -166,8 +188,17 @@ class VoiceRecognizer:
         ]
         self._recognizer_type = KaldiRecognizer
         self._grammar = json.dumps(grammar + ["[unk]"], ensure_ascii=False)
-        self._recognizer = KaldiRecognizer(self._model, 16000, self._grammar)
-        self._audio_queue = queue.Queue(maxsize=100)
+        self._sample_rate = pick_input_samplerate(sounddevice)
+        self._block_size = block_size_for(self._sample_rate)
+        self._recognizer = KaldiRecognizer(
+            self._model, self._sample_rate, self._grammar
+        )
+        # 말하는 도중의 중간 결과(partial)로 빠르게 응답하기 위한 상태
+        self._last_partial = ""
+        self._utterance_emitted = False
+        self._reset_requested = threading.Event()
+        # 0.1초 블록 기준 약 50초 분량 (기존 0.5초 x 100개와 같은 여유)
+        self._audio_queue = queue.Queue(maxsize=500)
         self.results = queue.Queue()
         self.errors = queue.Queue()
         self._stop_event = threading.Event()
@@ -181,7 +212,8 @@ class VoiceRecognizer:
     def _audio_callback(self, indata, frames, time_info, status):
         # 콜백에서는 오디오를 큐에 넣기만 하고 무거운 인식 처리는 작업 스레드에 맡긴다.
         if status:
-            self.errors.put("마이크 입력 상태: {}".format(status))
+            # 일시적인 입력 overflow 등은 음성 인식을 끄지 않고 기록만 한다.
+            print("[Stroop] 마이크 입력 상태: {}".format(status))
         with self._audio_lock:
             if not self._accepting_audio.is_set():
                 return
@@ -193,6 +225,9 @@ class VoiceRecognizer:
     def start_round(self):
         """새 라운드에서 들어오는 마이크 오디오를 받기 시작한다."""
         self.round_finished.clear()
+        # 이전 라운드(피드백 시간 포함)에 쌓인 음성/결과가 새 문제에 섞이지 않게 비운다.
+        _drain_queue(self.results)
+        self._reset_requested.set()
         with self._audio_lock:
             self._accepting_audio.set()
 
@@ -203,19 +238,40 @@ class VoiceRecognizer:
         self.round_finished.clear()
         self._finish_round.set()
 
+    def _reset_recognizer(self):
+        self._recognizer.Reset()
+        self._last_partial = ""
+        self._utterance_emitted = False
+
     def _consume_audio(self, audio):
         if self._recognizer.AcceptWaveform(audio):
+            # 발화가 끝났다(문장 확정). 중간 결과로 이미 보냈다면 중복 전송하지 않는다.
             transcript = json.loads(self._recognizer.Result()).get("text", "")
-            if transcript:
+            if transcript and not self._utterance_emitted:
                 self.results.put(transcript)
+            self._last_partial = ""
+            self._utterance_emitted = False
+            return
+
+        # 아직 말하는 중: 같은 색 단어가 연속 두 번(약 0.2초) 유지되면 바로 응답한다.
+        partial = json.loads(self._recognizer.PartialResult()).get("partial", "")
+        if (
+            partial
+            and not self._utterance_emitted
+            and partial == self._last_partial
+            and _contains_color_word(partial)
+        ):
+            self.results.put(partial)
+            self._utterance_emitted = True
+        self._last_partial = partial
 
     def _listen(self):
         """마이크 큐를 처리하고 라운드 종료 시 Vosk 최종 결과를 확정한다."""
         try:
             # 라즈베리파이/PC: 기본 입력 장치가 없을 때 사용 가능한 마이크 자동 탐색
             stream_kwargs = {
-                "samplerate": 16000,
-                "blocksize": 8000,
+                "samplerate": self._sample_rate,
+                "blocksize": self._block_size,
                 "dtype": "int16",
                 "channels": 1,
                 "callback": self._audio_callback,
@@ -233,6 +289,11 @@ class VoiceRecognizer:
 
             with self._sounddevice.RawInputStream(**stream_kwargs):
                 while not self._stop_event.is_set():
+                    if self._reset_requested.is_set():
+                        self._reset_requested.clear()
+                        _drain_queue(self._audio_queue)
+                        self._reset_recognizer()
+
                     if self._finish_round.is_set():
                         while True:
                             try:
@@ -244,11 +305,9 @@ class VoiceRecognizer:
                         transcript = json.loads(
                             self._recognizer.FinalResult()
                         ).get("text", "")
-                        if transcript:
+                        if transcript and not self._utterance_emitted:
                             self.results.put(transcript)
-                        self._recognizer = self._recognizer_type(
-                            self._model, 16000, self._grammar
-                        )
+                        self._reset_recognizer()
                         self._finish_round.clear()
                         self.round_finished.set()
                         continue

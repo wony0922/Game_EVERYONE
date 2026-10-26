@@ -224,3 +224,26 @@ def get_valid_input_device(sd):
 
     return None
 
+
+# Vosk 한국어 소형 모델은 16kHz로 학습되어 있다. 16kHz로 바로 받으면
+# 48kHz로 받을 때보다 인식 연산량이 1/3 수준이라 라즈베리파이에서 특히 빠르다.
+PREFERRED_SAMPLE_RATE = 16000
+# 오디오를 0.1초 단위로 잘라 인식기에 넘긴다. (기존 0.5초 → 대기 시간 단축)
+BLOCK_SECONDS = 0.1
+
+
+def pick_input_samplerate(sounddevice, preferred=PREFERRED_SAMPLE_RATE):
+    """마이크가 16kHz 입력을 지원하면 16kHz, 아니면 장치 기본값을 쓴다."""
+    try:
+        sounddevice.check_input_settings(
+            samplerate=preferred, channels=1, dtype="int16"
+        )
+        return preferred
+    except Exception:
+        device_info = sounddevice.query_devices(kind="input")
+        return int(device_info["default_samplerate"])
+
+
+def block_size_for(samplerate):
+    return max(160, int(samplerate * BLOCK_SECONDS))
+

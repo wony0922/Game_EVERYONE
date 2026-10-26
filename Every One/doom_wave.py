@@ -1,4 +1,5 @@
 import pygame
+from display_utils import set_game_mode
 from font_utils import get_font
 from game_tutorial import show_tutorial
 from hand_exit import VictoryExit

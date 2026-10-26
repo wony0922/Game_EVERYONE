@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import time
 import pygame
@@ -26,6 +26,9 @@ from mini_games import (
     run_pattern_line,
     run_ski_game,
 )
+from doom_classic import run_game as run_doom_classic
+from supertuxkart_game import run_game as run_supertuxkart
+from mario_game import run_game as run_mario
 
 try:
     from hand_controller import HandController
@@ -127,6 +130,9 @@ def main():
         ("FLY SWATTER", "손가락으로 모기를\n조준해 잡으세요.", run_fly_swatter),
         ("PATTERN LINE", "숫자 1, 2, 3을\n순서대로 이으세요.", run_pattern_line),
         ("SKI GAME", "S자 코스를 따라\n안전하게 내려오세요.", run_ski_game),
+        ("DOOM", "원조 둠을 손동작으로!\n주먹 발사, V 1초 유지로 종료.", run_doom_classic),
+        ("SUPERTUXKART", "손으로 핸들을 잡고 달리세요!\n주먹 브레이크, 가리키기 아이템.", run_supertuxkart),
+        ("MARIO", "손을 기울여 달리고\n주먹을 쥐어 점프하세요!", run_mario),
     ]
     carousel_position = 0.0
     carousel_target = 0.0
@@ -236,7 +242,7 @@ def main():
 
             game_name, description, _run_game = games[index]
 
-            # --- 카드 배경 이미지 (STROOP COLOR 제외) ---
+            # --- 카드 배경 이미지 ---
             bg_surf = card_bg_surfs.get(game_name)
             if bg_surf is not None:
                 bg_rendered = _get_rounded_bg(bg_surf, card_width, card_height)

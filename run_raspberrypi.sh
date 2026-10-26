@@ -41,10 +41,10 @@ if [[ ! -f "${ROOT_DIR}/hand_landmarker.task" ]]; then
 fi
 
 case "${MODE}" in
-    game|learning|hand-app)
+    game|learning|hand-app|setup)
         ;;
     *)
-        printf '사용법: %s [game|learning|hand-app]\n' "$0" >&2
+        printf '사용법: %s [game|learning|hand-app|setup]\n' "$0" >&2
         exit 2
         ;;
 esac
@@ -136,6 +136,12 @@ if [[ ! -f "${INSTALL_MARKER}" ]] || [[ "$(<"${INSTALL_MARKER}")" != "${INSTALL_
     "${VENV_PYTHON}" -m pip install --upgrade pip
     "${VENV_PYTHON}" -m pip install -r "${REQUIREMENTS}"
     printf '%s\n' "${INSTALL_KEY}" > "${INSTALL_MARKER}"
+fi
+
+# setup: 시스템 패키지와 가상환경 설치만 하고 끝낸다 (install_all.py 에서 사용)
+if [[ "${MODE}" == "setup" ]]; then
+    printf '기본 설치가 끝났습니다: %s\n' "${VENV_DIR}"
+    exit 0
 fi
 
 if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then

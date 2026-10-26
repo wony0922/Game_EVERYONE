@@ -8,3 +8,5 @@ Thumbs.db
 .venv-pi/
 vosk-model-*/
 *.zip
+Every One/doom_data/
+Every One/mario_pygame/

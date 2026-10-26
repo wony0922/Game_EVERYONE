@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import pygame
+from display_utils import set_game_mode
 from font_utils import get_font
 from gesture_icons import draw_tutorial_instruction, load_gesture_icons
 from hand_exit import VictoryExit
@@ -288,10 +289,24 @@ def _create_vosk_model_access_path(model_path):
     return junction_path, temp_dir
 
 
+def _is_expected_answer(text, current_num):
+    """중간 인식 결과가 이번 턴의 정답(숫자 또는 짝)인지 확인한다."""
+    raw_text = text.replace(" ", "").strip()
+    if not raw_text:
+        return False
+    if check_369(current_num) > 0:
+        return any(word in raw_text for word in ("짝", "착", "짹"))
+    return parse_korean_number(raw_text) == current_num
+
+
 class VoiceRecognizer:
     def __init__(self, current_num=1):
         try:
-            from voice_dependencies import ensure_voice_dependencies
+            from voice_dependencies import (
+                block_size_for,
+                ensure_voice_dependencies,
+                pick_input_samplerate,
+            )
 
             ensure_voice_dependencies()
             import sounddevice
@@ -313,15 +328,20 @@ class VoiceRecognizer:
                 f"Vosk 모델을 불러오지 못했습니다. 모델 폴더가 올바른지 확인해 주세요:\n{model_path}\n{error}"
             ) from error
 
-        device_info = self._sounddevice.query_devices(kind="input")
-        self.native_rate = int(device_info["default_samplerate"])
+        # 16kHz를 지원하면 16kHz로 받아 인식 연산량을 줄인다. (기존: 장치 기본값 44.1~48kHz)
+        self.native_rate = pick_input_samplerate(self._sounddevice)
+        self._block_size = block_size_for(self.native_rate)
 
         # SetGrammar 대신, 턴이 바뀔 때 처리 스레드가 recognizer를 교체한다.
         self._recognizer_type = KaldiRecognizer
         self._recognizer = self._create_recognizer(current_num)
+        self._recognizer_num = current_num
         self._recognizer_generation = 0
+        self._last_partial = ""
+        self._utterance_emitted = False
 
-        self._audio_queue = queue.Queue(maxsize=100)
+        # 0.1초 블록 기준 약 30초 분량
+        self._audio_queue = queue.Queue(maxsize=300)
         self.results = queue.Queue()
         self.errors = queue.Queue()
         self._number_updates = queue.Queue()
@@ -369,7 +389,7 @@ class VoiceRecognizer:
         try:
             stream_kwargs = {
                 "samplerate": self.native_rate,
-                "blocksize": 8000,
+                "blocksize": self._block_size,
                 "dtype": "int16",
                 "channels": 1,
                 "callback": self._audio_callback,
@@ -405,7 +425,10 @@ class VoiceRecognizer:
 
                     if current_num is not None:
                         self._recognizer = self._create_recognizer(current_num)
+                        self._recognizer_num = current_num
                         self._recognizer_generation = generation
+                        self._last_partial = ""
+                        self._utterance_emitted = False
                         self.clear_results()
 
                     try:
@@ -416,10 +439,34 @@ class VoiceRecognizer:
                         audio_generation = self._generation
                     recognizer_generation = self._recognizer_generation
                     if self._recognizer.AcceptWaveform(audio):
-                        result = self._recognizer.Result()
+                        # 발화 확정. 중간 결과로 이미 보냈다면 중복 전송하지 않는다.
+                        transcript = json.loads(
+                            self._recognizer.Result()
+                        ).get("text", "")
+                        already_sent = self._utterance_emitted
+                        self._last_partial = ""
+                        self._utterance_emitted = False
+                        if already_sent:
+                            continue
                     else:
-                        continue
-                    transcript = json.loads(result).get("text", "")
+                        # 말하는 도중: 중간 결과가 현재 정답과 일치하고 0.2초 동안
+                        # 유지되면 문장 끝(무음)을 기다리지 않고 바로 보낸다.
+                        # 정답이 아닌 중간 결과("십삼" 중 "십" 등)는 확정될 때까지 기다린다.
+                        partial = json.loads(
+                            self._recognizer.PartialResult()
+                        ).get("partial", "")
+                        stable = partial and partial == self._last_partial
+                        self._last_partial = partial
+                        if (
+                            not stable
+                            or self._utterance_emitted
+                            or not _is_expected_answer(
+                                partial, self._recognizer_num
+                            )
+                        ):
+                            continue
+                        self._utterance_emitted = True
+                        transcript = partial
                     with self._generation_lock:
                         is_current_generation = (
                             audio_generation == self._generation

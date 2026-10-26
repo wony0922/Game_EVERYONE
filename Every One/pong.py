@@ -1,4 +1,5 @@
 import pygame
+from display_utils import set_game_mode
 from font_utils import get_font
 import random
 import os

@@ -13,7 +13,7 @@ import time
 import math
 import threading
 import pygame
-from camera_utils import open_camera
+from camera_utils import LatestFrameReader, open_camera
 
 # ══════════════════════════════════════════════════════════
 #  경로 및 기본 설정
@@ -28,6 +28,8 @@ HandLandmarker = mp.tasks.vision.HandLandmarker
 HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 RunningMode = mp.tasks.vision.RunningMode
 HandConnections = mp.tasks.vision.HandLandmarksConnections
+
+PREVIEW_SIZE = (160, 120)
 
 HAND_CONNECTIONS_SET = frozenset(
     (c.start, c.end) for c in HandConnections.HAND_CONNECTIONS
@@ -222,8 +224,13 @@ class HandController:
 
         options = HandLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=model_path_to_use),
-            running_mode=RunningMode.IMAGE,
-            num_hands=1
+            # VIDEO 모드: 이전 프레임의 손 위치를 추적에 재사용하므로
+            # 손이 계속 보이는 동안은 손바닥 검출 단계를 건너뛰어 훨씬 빠르다.
+            running_mode=RunningMode.VIDEO,
+            num_hands=1,
+            min_hand_detection_confidence=0.5,
+            min_hand_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
         )
 
         try:
@@ -233,46 +240,38 @@ class HandController:
             self.running = False
             return
 
-        is_linux = sys.platform.startswith("linux")
-        # 웹캠 하드웨어가 표준 지원하는 640x480으로 안전하게 오픈 (320x240 미지원 웹캠 방지)
-        cam_w, cam_h = 640, 480
-        cap = open_camera(self.cam_index, width=cam_w, height=cam_h)
+        # 웹캠 기본 해상도(VGA 640x480)로 연다.
+        cap = open_camera(self.cam_index, width=640, height=480)
 
-        if not cap.isOpened():
+        if cap is None or not cap.isOpened():
             print(f"[HandController 에러] 카메라를 열 수 없습니다 (index={self.cam_index})")
             landmarker.close()
             self.running = False
             return
 
-        # 최신 프레임 1장만 계속 유지하여 OpenCV 큐 버퍼 지연(밀림)을 원천 차단
-        frame_reader = FreshFrameReader(cap)
-
-        # 카메라 워밍업 및 첫 프레임 수신 대기 (최대 1초)
-        start_wait = time.time()
-        while self.running and (time.time() - start_wait < 1.0):
-            ret, _ = frame_reader.read()
-            if ret:
-                break
-            time.sleep(0.05)
-
-        # 추론용 다운샘플링 해상도 (라즈베리파이 4 CPU 최적화: 랜드마크 비율은 동일함)
-        infer_size = (256, 192) if is_linux else (320, 240)
+        # 카메라 읽기를 별도 스레드로 분리해 항상 최신 프레임만 처리한다.
+        reader = LatestFrameReader(cap)
+        frame_id = 0
+        last_timestamp_ms = 0
+        preview_w, preview_h = PREVIEW_SIZE
 
         while self.running:
-            ret, frame = frame_reader.read()
-            if not ret or frame is None:
-                time.sleep(0.01)
+            frame_id, frame = reader.read(frame_id)
+            if frame is None:
                 continue
 
             frame = cv2.flip(frame, 1)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
-            # MediaPipe 추론용 경량 이미지 생성 (랜드마크 좌표는 0.0~1.0 비율이므로 동일함)
-            infer_frame = cv2.resize(frame, infer_size, interpolation=cv2.INTER_LINEAR)
-            rgb_infer = cv2.cvtColor(infer_frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_infer)
+            # VIDEO 모드는 타임스탬프가 반드시 증가해야 한다.
+            timestamp_ms = int(time.monotonic() * 1000)
+            if timestamp_ms <= last_timestamp_ms:
+                timestamp_ms = last_timestamp_ms + 1
+            last_timestamp_ms = timestamp_ms
 
             try:
-                result = landmarker.detect(mp_image)
+                result = landmarker.detect_for_video(mp_image, timestamp_ms)
             except Exception:
                 result = None
 
@@ -280,21 +279,27 @@ class HandController:
             hand_x_val = 0.5
             hand_y_val = 0.5
             gesture_val = "None"
+            lm_list = None
 
             if result and result.hand_landmarks:
                 lm_list = result.hand_landmarks[0]
                 detected = True
                 hand_x_val = max(0.0, min(1.0, lm_list[9].x))
                 hand_y_val = max(0.0, min(1.0, lm_list[9].y))
-
                 gesture_val = recognize_gesture(lm_list, self.custom_gestures)
-                draw_hand_landmarks(frame, lm_list)
 
-            cv2.putText(frame, f"Gesture: {gesture_val}", (10, 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
-
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            small_frame = cv2.resize(frame_rgb, (160, 120), interpolation=cv2.INTER_NEAREST)
+            # 미리보기는 작은 화면에만 그려 원본 크기 그리기/변환 비용을 줄인다.
+            small_frame = cv2.resize(
+                rgb_frame, (preview_w, preview_h), interpolation=cv2.INTER_AREA
+            )
+            if lm_list is not None:
+                draw_hand_landmarks(
+                    small_frame, lm_list,
+                    landmark_color=(255, 0, 0), connection_color=(0, 255, 0),
+                    thickness=1, circle_radius=2,
+                )
+            cv2.putText(small_frame, gesture_val, (4, 14),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
 
             with self.lock:
                 self.is_detected = detected
@@ -307,7 +312,7 @@ class HandController:
             time.sleep(0.005)
 
         try:
-            frame_reader.stop()
+            reader.stop()
             cap.release()
             landmarker.close()
         except Exception:

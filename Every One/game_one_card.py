@@ -1,4 +1,5 @@
 import pygame
+from display_utils import set_game_mode
 from font_utils import get_font
 from gesture_icons import draw_tutorial_instruction, load_gesture_icons
 import random
