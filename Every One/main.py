@@ -20,6 +20,12 @@ from Stroop_Game import run_game as run_stroop_game
 from game_1945 import run_game as run_1945_game
 from game_369 import run_game as run_369_game
 from game_one_card import run_game as run_one_card_game
+from mini_games import (
+    run_burger_tower,
+    run_fly_swatter,
+    run_pattern_line,
+    run_ski_game,
+)
 
 try:
     from hand_controller import HandController
@@ -70,6 +76,10 @@ def main():
         "STROOP COLOR":   "card_bg_stroop_color.png",
         "369 GAME":       "card_bg_369.png",
         "ONE CARD":       "card_bg_one_card.png",
+        "BURGER TOWER":   "card_bg_burger_tower.png",
+        "FLY SWATTER":    "card_bg_fly_swatter.png",
+        "PATTERN LINE":   "card_bg_pattern_line.png",
+        "SKI GAME":       "card_bg_ski_game.png",
     }
     card_bg_surfs = {}
     for game_key, fname in _card_bg_files.items():
@@ -113,6 +123,10 @@ def main():
         ("STROOP COLOR", "글자가 아닌 글자의 색을\n맞히는 게임입니다.", run_stroop_game),
         ("369 GAME", "숫자 대신 박수로\n369를 플레이하세요.", run_369_game),
         ("ONE CARD", "카드를 내고 먼저\n손패를 비우세요.", run_one_card_game),
+        ("BURGER TOWER", "재료를 접시 중앙에\n차곡차곡 쌓으세요.", run_burger_tower),
+        ("FLY SWATTER", "손가락으로 모기를\n조준해 잡으세요.", run_fly_swatter),
+        ("PATTERN LINE", "숫자 1, 2, 3을\n순서대로 이으세요.", run_pattern_line),
+        ("SKI GAME", "S자 코스를 따라\n안전하게 내려오세요.", run_ski_game),
     ]
     carousel_position = 0.0
     carousel_target = 0.0
