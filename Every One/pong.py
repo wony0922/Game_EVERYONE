@@ -106,6 +106,7 @@ def run_game(hand_controller=None):
         [
             ("목표", [
                 "공을 튕겨 점수 얻기",
+                "움직이는 보너스 표적을 맞혀 점수와 패들 강화 획득",
             ]),
             ("조작", [
                 "POINT|Point: 패들 이동",
@@ -132,6 +133,12 @@ def run_game(hand_controller=None):
     game_over = False
 
     running = True
+    game_start_time = pygame.time.get_ticks()
+    paddle_boost_until = 0
+    bonus_target = pygame.Rect(120, 220, 28, 28)
+    bonus_target_x = float(bonus_target.x)
+    bonus_target_y = float(bonus_target.y)
+    bonus_target_dx = 150.0
 
 
     # --------------------------------------
@@ -290,6 +297,14 @@ def run_game(hand_controller=None):
                         lives = MAX_LIVES
 
                         game_over = False
+                        game_start_time = pygame.time.get_ticks()
+                        paddle_boost_until = 0
+                        paddle.width = PADDLE_WIDTH
+                        bonus_target_x = float(random.randint(80, WIDTH - 80))
+                        bonus_target_y = float(random.randint(140, 300))
+                        bonus_target.x = int(bonus_target_x)
+                        bonus_target.y = int(bonus_target_y)
+                        bonus_target_dx = random.choice([-1, 1]) * 150.0
 
                         reset_ball()
 
@@ -316,6 +331,22 @@ def run_game(hand_controller=None):
         # ==================================
 
         if not game_over:
+            current_time = pygame.time.get_ticks()
+            elapsed_sec = (current_time - game_start_time) / 1000.0
+            difficulty_level = int(elapsed_sec // 20)
+            base_paddle_width = max(75, PADDLE_WIDTH - difficulty_level * 6)
+            target_paddle_width = (
+                min(PADDLE_WIDTH, base_paddle_width + 35)
+                if current_time < paddle_boost_until
+                else base_paddle_width
+            )
+            if paddle.width != target_paddle_width:
+                paddle.centerx = min(
+                    WIDTH - target_paddle_width // 2,
+                    max(target_paddle_width // 2, paddle.centerx),
+                )
+                paddle.width = target_paddle_width
+            ball_speed_multiplier = min(1.0 + difficulty_level * 0.08, 1.64)
 
 
             # --------------------------------
@@ -327,7 +358,7 @@ def run_game(hand_controller=None):
                 # 손 X 좌표(0.0~1.0)를 패들 위치로 변환
                 target_x = int(
                     scale_hand_x(hand_x) * WIDTH
-                    - PADDLE_WIDTH // 2
+                    - paddle.width // 2
                 )
 
                 # 부드러운 이동 (보간)
@@ -391,11 +422,11 @@ def run_game(hand_controller=None):
 
             # 정수 Rect 대신 실수 좌표를 누적해 작은 속도도 매 프레임 보존한다.
             ball_x += (
-                ball_dx * BALL_SPEED
+                ball_dx * BALL_SPEED * ball_speed_multiplier
             )
 
             ball_y += (
-                ball_dy * BALL_SPEED
+                ball_dy * BALL_SPEED * ball_speed_multiplier
             )
 
             ball.x = int(ball_x)
@@ -519,6 +550,19 @@ def run_game(hand_controller=None):
 
                 lose_life()
 
+            bonus_target_x += bonus_target_dx / FPS
+            if bonus_target.left < 24 or bonus_target.right > WIDTH - 24:
+                bonus_target_dx *= -1
+            bonus_target.x = int(bonus_target_x)
+            if bonus_target.colliderect(ball):
+                score += 5
+                paddle_boost_until = current_time + 8000
+                bonus_target_x = float(random.randint(80, WIDTH - 80))
+                bonus_target_y = float(random.randint(140, 300))
+                bonus_target_dx = random.choice([-1, 1]) * random.randint(130, 190)
+                bonus_target.x = int(bonus_target_x)
+                bonus_target.y = int(bonus_target_y)
+
 
         # ==================================
         # 화면 그리기
@@ -543,6 +587,20 @@ def run_game(hand_controller=None):
             score_text,
             (20, 20)
         )
+
+        elapsed_sec = max(
+            0, (pygame.time.get_ticks() - game_start_time) / 1000.0
+        )
+        difficulty_level = int(elapsed_sec // 20)
+        speed_text = font.render(
+            "LEVEL : {}  SPEED : {:.1f}x".format(
+                difficulty_level + 1,
+                min(1.0 + difficulty_level * 0.08, 1.64),
+            ),
+            True,
+            YELLOW,
+        )
+        screen.blit(speed_text, (20, 100))
 
 
         # ----------------------------------
@@ -628,6 +686,13 @@ def run_game(hand_controller=None):
             WHITE,
             ball
         )
+
+        pygame.draw.circle(screen, (255, 190, 70), bonus_target.center, 16)
+        pygame.draw.circle(screen, WHITE, bonus_target.center, 16, 2)
+        pygame.draw.circle(screen, (255, 245, 170), bonus_target.center, 5)
+        if pygame.time.get_ticks() < paddle_boost_until:
+            boost_text = font.render("PADDLE BOOST", True, GREEN)
+            screen.blit(boost_text, (WIDTH - boost_text.get_width() - 20, 65))
 
 
         # ==================================

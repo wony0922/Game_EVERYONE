@@ -714,7 +714,7 @@ def choose_enemy_kind(hp):
 
 class Enemy:
     """고정된 위치에서 제한 시간 동안 살아 있는 적의 전투 상태."""
-    def __init__(self, x, y, hp=1):
+    def __init__(self, x, y, hp=1, time_limit=ENEMY_TIME_LIMIT):
         self.x = x
         self.y = y
         self.hp = hp
@@ -722,7 +722,7 @@ class Enemy:
         self.alive = True
         self.hit_flash = 0.0
         self.age = 0.0           # 스폰 후 경과 시간
-        self.time_left = ENEMY_TIME_LIMIT
+        self.time_left = time_limit
         # 외형: 체력에 맞는 종류 + 색 변형
         self.kind, self.variant = choose_enemy_kind(hp)
         self.bob_phase = random.uniform(0, math.tau)
@@ -1207,6 +1207,7 @@ def run_game(hand_controller=None):
         [
             ("목표", [
                 "60초 생존! 적은 7초 안에 처치!",
+                "시간이 지날수록 적이 많아지고 처치 시간이 짧아집니다.",
             ]),
             ("조작", [
                 "POINT|Point: 시점 회전",
@@ -1236,6 +1237,9 @@ def run_game(hand_controller=None):
         state["time"] = GAME_TIME
         state["enemies"] = []
         state["spawn_timer"] = SPAWN_INTERVAL_START
+        state["difficulty"] = 1
+        state["max_enemies"] = MAX_ENEMIES
+        state["enemy_time_limit"] = ENEMY_TIME_LIMIT
         state["last_shot"] = -SHOT_COOLDOWN
         state["muzzle"] = 0.0
         state["damage_flash"] = 0.0
@@ -1280,7 +1284,7 @@ def run_game(hand_controller=None):
     def spawn_enemy():
         """시야와 벽 가림 조건을 만족하는 빈 위치에 적을 생성한다."""
         alive = [e for e in state["enemies"] if e.alive]
-        if len(alive) >= MAX_ENEMIES:
+        if len(alive) >= state["max_enemies"]:
             return
 
         candidates = [
@@ -1300,7 +1304,9 @@ def run_game(hand_controller=None):
         if elapsed >= 40 and random.random() < 0.15:
             hp = 3
 
-        state["enemies"].append(Enemy(x, y, hp))
+        state["enemies"].append(
+            Enemy(x, y, hp, time_limit=state["enemy_time_limit"])
+        )
 
     # --------------------------------------
     # 총 발사 (화면 중앙 조준점 히트스캔)
@@ -1426,6 +1432,11 @@ def run_game(hand_controller=None):
         if not state["over"]:
 
             state["time"] -= dt
+            elapsed = GAME_TIME - max(0.0, state["time"])
+            progress = min(1.0, elapsed / GAME_TIME)
+            state["difficulty"] = 1 + min(4, int(progress * 5))
+            state["max_enemies"] = MAX_ENEMIES + int(progress * 3)
+            state["enemy_time_limit"] = ENEMY_TIME_LIMIT - progress * 2.0
 
             keys = pygame.key.get_pressed()
             key_turning = keys[pygame.K_LEFT] or keys[pygame.K_RIGHT]
@@ -1458,7 +1469,6 @@ def run_game(hand_controller=None):
             state["spawn_timer"] -= dt
             while state["spawn_timer"] <= 0:
                 spawn_enemy()
-                progress = min(1.0, (GAME_TIME - max(0.0, state["time"])) / GAME_TIME)
                 interval = SPAWN_INTERVAL_START + (
                     SPAWN_INTERVAL_END - SPAWN_INTERVAL_START
                 ) * progress
@@ -1678,9 +1688,16 @@ def draw_hud(surf, state, font, small_font, hand_mode=False):
 
     alive = len([e for e in state["enemies"] if e.alive])
     enemy_text = small_font.render(
-        "ENEMIES : {}/{}".format(alive, MAX_ENEMIES), True, ORANGE
+        "ENEMIES : {}/{}".format(alive, state["max_enemies"]), True, ORANGE
     )
     surf.blit(enemy_text, (WIDTH - 20 - enemy_text.get_width(), 55))
+    difficulty_text = small_font.render(
+        "THREAT : {}".format(state["difficulty"]), True, RED
+    )
+    surf.blit(
+        difficulty_text,
+        (WIDTH - 20 - difficulty_text.get_width(), 78),
+    )
 
     if hand_mode:
         label = "HAND : TURN    FIST : FIRE    (KB OK)    ESC : MENU"

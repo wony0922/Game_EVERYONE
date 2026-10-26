@@ -148,8 +148,16 @@ class Bullet:
 
 class Enemy:
     """화면 위쪽에서 내려오거나 플레이어를 향해 대각선으로 이동하는 적."""
-    def __init__(self, target_x=None, target_y=None, speed_bonus=0.0):
-        self.is_diagonal = random.random() < 0.3 and target_x is not None
+    def __init__(
+        self,
+        target_x=None,
+        target_y=None,
+        speed_bonus=0.0,
+        diagonal_chance=0.3,
+    ):
+        self.is_diagonal = (
+            random.random() < diagonal_chance and target_x is not None
+        )
 
         if self.is_diagonal:
             spawn_side = random.choice(["top", "left", "right"])
@@ -329,6 +337,7 @@ def run_game(hand_controller=None):
         [
             ("목표", [
                 "적 격추! 5분 뒤 보스 처치!",
+                "시간이 지날수록 적이 더 빠르고 다양해집니다.",
             ]),
             ("조작", [
                 "POINT|Point: 비행기 이동 · 자동 발사",
@@ -461,7 +470,17 @@ def run_game(hand_controller=None):
 
             if boss is None:
                 if random.random() < spawn_rate and len(enemies) < (8 + difficulty_level * 2):
-                    enemies.append(Enemy(player.x, player.y, speed_bonus=speed_bonus))
+                    diagonal_chance = min(
+                        0.3 + (difficulty_level - 1) * 0.02, 0.6
+                    )
+                    enemies.append(
+                        Enemy(
+                            player.x,
+                            player.y,
+                            speed_bonus=speed_bonus,
+                            diagonal_chance=diagonal_chance,
+                        )
+                    )
             else:
                 boss.update(current_time, enemy_bullets, player.x, player.y)
 
@@ -599,6 +618,12 @@ def run_game(hand_controller=None):
         if boss is None:
             timer_txt = font_medium.render(f"BOSS IN: {remaining_boss_time // 60:02d}:{remaining_boss_time % 60:02d}", True, GREEN)
             screen.blit(timer_txt, (20, 50))
+            threat_txt = font_small.render(
+                f"THREAT LEVEL: {difficulty_level}",
+                True,
+                ORANGE,
+            )
+            screen.blit(threat_txt, (20, 78))
         else:
             pygame.draw.rect(screen, RED, (WIDTH // 2 - 150, 15, 300, 16))
             pygame.draw.rect(screen, GREEN, (WIDTH // 2 - 150, 15, int(300 * (boss.hp / boss.max_hp)), 16))
