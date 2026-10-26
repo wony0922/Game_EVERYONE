@@ -6,7 +6,7 @@ Thumbs.db
 *.metadata.json
 .venv/
 .venv-pi/
-vosk-model-*/
+**/vosk-model-*/
 *.zip
 Every One/doom_data/
 Every One/mario_pygame/
