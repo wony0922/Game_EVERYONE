@@ -41,10 +41,15 @@ def warn(msg):
     print("  [주의] {}".format(msg), flush=True)
 
 
+def pause():
+    """윈도우에서 창이 바로 닫히지 않도록 기다린다 (install_all.py 로 실행할 때는 생략)."""
+    if sys.platform == "win32" and not os.environ.get("EVERYONE_NO_PAUSE"):
+        input("엔터를 누르면 창이 닫힙니다...")
+
+
 def fail(msg):
     print("\n[실패] {}".format(msg), file=sys.stderr, flush=True)
-    if sys.platform == "win32":
-        input("엔터를 누르면 창이 닫힙니다...")
+    pause()
     sys.exit(1)
 
 
@@ -308,7 +313,7 @@ def main():
         print("권한 적용을 위해 라즈베리파이를 한 번 재부팅해 주세요: sudo reboot")
     if sys.platform == "win32":
         print("게임 실행: Every One\\EveryOne_Start.bat  ->  메뉴에서 DOOM 선택")
-        input("엔터를 누르면 창이 닫힙니다...")
+        pause()
     else:
         print("게임 실행: ./run_raspberrypi.sh  ->  메뉴에서 DOOM 선택")
 

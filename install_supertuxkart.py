@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT_DIR / "Every One"))
 
 # 출력/다운로드/uinput 설정 등은 DOOM 설치 스크립트와 같은 함수를 쓴다
 from install_doom import (  # noqa: E402
-    _sudo, download, fail, install_pip, ok, run, setup_uinput, sha256_of, step,
+    _sudo, pause, download, fail, install_pip, ok, run, setup_uinput, sha256_of, step,
     verify_linux,
 )
 from external_game import windows_game_home  # noqa: E402
@@ -154,7 +154,7 @@ def main():
         print("권한 적용을 위해 라즈베리파이를 한 번 재부팅해 주세요: sudo reboot")
     if sys.platform == "win32":
         print("게임 실행: Every One\\EveryOne_Start.bat  ->  메뉴에서 SUPERTUXKART 선택")
-        input("엔터를 누르면 창이 닫힙니다...")
+        pause()
     else:
         print("게임 실행: ./run_raspberrypi.sh  ->  메뉴에서 SUPERTUXKART 선택")
 

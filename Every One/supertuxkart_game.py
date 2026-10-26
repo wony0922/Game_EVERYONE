@@ -34,9 +34,10 @@ KART = "tux"
 LAPS = "2"
 DIFFICULTY = "0"       # 0 초보, 1 중급, 2 전문가, 3 슈퍼턱스
 
+# 창 모드로 실행 (전체화면으로 바꾸려면 "--windowed" 를 "--fullscreen" 으로)
 if IS_WINDOWS:
     NUM_KARTS = "6"
-    DISPLAY_ARGS = ["--fullscreen"]
+    DISPLAY_ARGS = ["--windowed", "--screensize=1280x720"]
 else:
     # 라즈베리파이 4: 상대 카트 수와 해상도를 줄여야 부드럽게 돈다
     NUM_KARTS = "4"
@@ -143,8 +144,7 @@ def run_game(hand_controller=None):
     engine = _find_engine()
     command = [
         engine,
-        "--no-start-screen",      # 메뉴 없이 바로 경주 시작
-        "--use-keyboard=0",
+        "--no-start-screen",      # 메뉴 없이 바로 경주 시작 (키보드 0번 플레이어로 자동 배정)
         f"--track={TRACK}",
         f"--kart={KART}",
         f"--numkarts={NUM_KARTS}",

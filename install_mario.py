@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT_DIR))
-from install_doom import download, fail, ok, step  # noqa: E402
+from install_doom import download, fail, ok, pause, step  # noqa: E402
 
 COMMIT = "d4e1e438c8ca544b445b3d22f0552e761b1ea64a"   # 버전 고정 (2020-08-01)
 REPO = "https://github.com/Winter091/MarioPygame"
@@ -125,7 +125,7 @@ def main():
     print("\n마리오 설치가 끝났습니다!")
     if sys.platform == "win32":
         print("게임 실행: Every One\\EveryOne_Start.bat  ->  메뉴에서 MARIO 선택")
-        input("엔터를 누르면 창이 닫힙니다...")
+        pause()
     else:
         print("게임 실행: ./run_raspberrypi.sh  ->  메뉴에서 MARIO 선택")
 

@@ -20,6 +20,9 @@
 | **STROOP COLOR** | 글자의 뜻이 아니라 글자에 칠해진 실제 색깔을 맞힙니다. 음성과 숫자 키를 지원합니다. |
 | **369 GAME** | 차례에 맞는 숫자 또는 박수를 입력합니다. 음성과 키보드 입력을 지원합니다. |
 | **ONE CARD** | 카드를 내거나 뽑으며 손패를 먼저 비우는 원카드 게임입니다. |
+| **DOOM** | 오픈소스 둠 엔진(chocolate-doom)과 무료 데이터(Freedoom)를 손동작으로 조작합니다. 별도 설치가 필요합니다. |
+| **SUPERTUXKART** | 오픈소스 카트 레이싱 게임을 손을 핸들 삼아 조작합니다. 별도 설치가 필요합니다. |
+| **MARIO** | MarioPygame(MIT) 1-1 스테이지를 손 기울기와 주먹 점프로 플레이합니다. 별도 설치가 필요합니다. |
 
 각 게임의 상세 조작은 게임 시작 전 안내 화면과 게임 내 안내 문구를 확인하세요. 손동작 인식이 준비되지 않은 경우에도 키보드 조작을 지원하는 게임이 있습니다.
 
@@ -77,7 +80,18 @@ Raspberry Pi의 CSI 카메라는 환경에 따라 OpenCV에서 바로 열리지 
 
    게임 실행 배치 파일은 Python 3.14와 주요 패키지를 확인하고, 없으면 설치를 시도합니다. 패키지 설치에는 인터넷 연결이 필요합니다.
 
-### Raspberry Pi
+### Raspberry Pi (한 번에 설치)
+
+처음 설치할 때는 아래 한 줄로 기본 패키지, 음성 모델, DOOM, SuperTuxKart, 마리오를 모두 설치하고 점검합니다. 끝나면 바탕화면에 **Every One** 아이콘이 생겨 더블클릭으로 실행할 수 있습니다.
+
+```bash
+python3 install_all.py               # 전체 설치 + 점검 + 바탕화면 아이콘
+python3 install_all.py --check-only  # 설치 없이 점검만 (시연 전 확인용)
+```
+
+가상 입력 장치 권한이 처음 설정되면 재부팅(`sudo reboot`)이 한 번 필요합니다. 게임별로 따로 설치하려면 `install_voice_model.py`, `install_doom.py`, `install_supertuxkart.py`, `install_mario.py`를 각각 실행합니다.
+
+### Raspberry Pi (직접 실행)
 
 데스크톱 세션에서 저장소 루트로 이동한 뒤 실행합니다.
 
@@ -92,6 +106,7 @@ chmod +x run_raspberrypi.sh
 ./run_raspberrypi.sh game       # 게임 메뉴
 ./run_raspberrypi.sh learning  # 5개 샘플 학습 및 테스트
 ./run_raspberrypi.sh hand-app  # 손동작 인식 앱
+./run_raspberrypi.sh setup     # 설치만 하고 종료
 ```
 
 ## 손동작 도구
