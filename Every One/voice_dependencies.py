@@ -1,4 +1,4 @@
-﻿"""
+"""
 voice_dependencies.py
 ─────────────────────
 게임 실행 시 vosk/sounddevice 패키지와 한국어 모델이 없으면
@@ -168,24 +168,52 @@ def ensure_voice_dependencies():
 def get_valid_input_device(sounddevice):
     """
     사용 가능한 마이크 입력 장치 인덱스를 반환한다.
-    기본 장치가 없거나 오류 시 입력 채널이 있는 첫 번째 장치를 반환한다.
-    아무것도 없으면 None 반환.
+    라즈베리파이/PC 환경에서 외장 USB 마이크를 최우선으로 탐색하며,
+    어떤 마이크가 선택되었는지 터미널에 안내한다.
     """
     try:
-        default = sounddevice.default.device[0]
-        if default is not None and default >= 0:
-            devices = sounddevice.query_devices()
-            if devices[default]["max_input_channels"] > 0:
-                return None
-    except Exception:
-        pass
-
-    try:
         devices = sounddevice.query_devices()
-        for idx, dev in enumerate(devices):
-            if dev.get("max_input_channels", 0) > 0:
-                return idx
+    except Exception as exc:
+        _print(f"  [오디오] 장치 목록 조회 실패: {exc}")
+        return None
+
+    input_devices = []
+    for idx, dev in enumerate(devices):
+        if dev.get("max_input_channels", 0) > 0:
+            input_devices.append((idx, dev))
+
+    if not input_devices:
+        _print("  [오디오 경고] 사용 가능한 마이크 입력 장치를 찾을 수 없습니다!")
+        return None
+
+    # 마이크 목록 로깅
+    _print("  [오디오] 감지된 입력 장치 목록:")
+    for idx, dev in input_devices:
+        _print(f"    - [{idx}] {dev.get('name', 'Unknown')} (입력 채널: {dev.get('max_input_channels')})")
+
+    # 1순위: 외장 USB 마이크 또는 전용 마이크 키워드가 포함된 장치
+    usb_keywords = ["usb", "mic", "microphone", "headset", "audio", "sound"]
+    for idx, dev in input_devices:
+        name_lower = dev.get("name", "").lower()
+        # 가상 장치나 루프백 제외
+        if any(bad in name_lower for bad in ["dmix", "loopback", "null"]):
+            continue
+        if any(kw in name_lower for kw in usb_keywords):
+            _print(f"  ✓ [오디오] 외장/우선 마이크 선택됨: [{idx}] {dev.get('name')}")
+            return idx
+
+    # 2순위: 시스템 기본 입력 장치
+    try:
+        default_idx = sounddevice.default.device[0]
+        if default_idx is not None and default_idx >= 0:
+            if devices[default_idx]["max_input_channels"] > 0:
+                _print(f"  ✓ [오디오] 기본 입력 장치 선택됨: [{default_idx}] {devices[default_idx].get('name')}")
+                return default_idx
     except Exception:
         pass
 
-    return None
+    # 3순위: 입력 채널이 있는 첫 번째 장치
+    chosen_idx, chosen_dev = input_devices[0]
+    _print(f"  ✓ [오디오] 대체 입력 장치 선택됨: [{chosen_idx}] {chosen_dev.get('name')}")
+    return chosen_idx
+
