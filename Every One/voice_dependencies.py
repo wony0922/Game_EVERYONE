@@ -1,8 +1,7 @@
-"""
+﻿"""
 voice_dependencies.py
 ─────────────────────
-게임 실행 시 vosk/sounddevice 패키지와 한국어 모델이 없으면
-자동으로 설치·다운로드한다.
+음성인식 의존성(Vosk, sounddevice) 및 모델 자동 다운로드 모듈.
 """
 
 import os
@@ -12,26 +11,27 @@ import tempfile
 import urllib.request
 import urllib.error
 
-# ── 설정 ──────────────────────────────────────────────────────────────────────
 GITHUB_REPO      = "wony0922/Game_EVERYONE"
-MODEL_ASSET_NAME = "vosk-model-small-ko-0.22.zip"   # Release 첨부 파일 이름
-MODEL_DIR_NAME   = "vosk-model-small-ko-0.22"        # 압축 해제 후 폴더 이름
+MODEL_ASSET_NAME = "vosk-model-small-ko-0.22.zip"
+MODEL_DIR_NAME   = "vosk-model-small-ko-0.22"
 
-# GitHub Releases latest 다운로드 URL
 _RELEASE_URL = (
     f"https://github.com/{GITHUB_REPO}/releases/latest/download/{MODEL_ASSET_NAME}"
 )
-# ──────────────────────────────────────────────────────────────────────────────
 
 
 def _print(msg, end="\n"):
-    """표준 출력과 flush를 함께 처리한다."""
-    print(msg, end=end, flush=True)
+    """표준 출력과 flush를 함께 처리하며 cp949 인코딩 오류를 방지한다."""
+    try:
+        print(msg, end=end, flush=True)
+    except UnicodeEncodeError:
+        try:
+            print(msg.encode("ascii", "replace").decode("ascii"), end=end, flush=True)
+        except Exception:
+            pass
 
 
 def _download_with_progress(url, dest):
-    """URL을 dest 경로로 다운로드하며 진행률을 출력한다."""
-
     def _reporthook(block_num, block_size, total_size):
         if total_size <= 0:
             _print(f"\r  다운로드 중... {block_num * block_size // 1024} KB", end="")
@@ -40,7 +40,7 @@ def _download_with_progress(url, dest):
         pct = downloaded / total_size * 100
         bar_len = 30
         filled = int(bar_len * pct / 100)
-        bar = "█" * filled + "░" * (bar_len - filled)
+        bar = "=" * filled + "-" * (bar_len - filled)
         mb_done = downloaded / 1_048_576
         mb_total = total_size / 1_048_576
         print(
@@ -50,19 +50,14 @@ def _download_with_progress(url, dest):
         )
 
     urllib.request.urlretrieve(url, dest, reporthook=_reporthook)
-    print()  # 줄바꿈
+    print()
 
 
 def ensure_vosk_model(target_dir=None):
-    """
-    vosk 모델 폴더 경로를 반환한다.
-    모델이 없으면 GitHub Releases에서 자동 다운로드한다.
-    """
     if target_dir is None:
         target_dir = os.path.dirname(os.path.abspath(__file__))
 
     model_path = os.path.join(target_dir, MODEL_DIR_NAME)
-
     if os.path.isdir(model_path):
         return model_path
 
@@ -94,8 +89,7 @@ def ensure_vosk_model(target_dir=None):
                 zf.extractall(target_dir)
         except zipfile.BadZipFile as exc:
             raise RuntimeError(
-                "다운로드된 파일이 올바른 ZIP이 아닙니다. "
-                "Release 첨부 파일을 확인하세요."
+                "다운로드된 파일이 올바른 ZIP이 아닙니다. Release 첨부 파일을 확인하세요."
             ) from exc
     finally:
         try:
@@ -113,25 +107,19 @@ def ensure_vosk_model(target_dir=None):
             model_path = candidates[0]
         else:
             raise RuntimeError(
-                f"압축 해제 후 모델 폴더를 찾을 수 없습니다.\n"
-                f"ZIP 내부 폴더 이름이 '{MODEL_DIR_NAME}'인지 확인하세요."
+                f"압축 해제 후 모델 폴더를 찾을 수 없습니다: {model_path}"
             )
 
-    _print(f"  ✓ 모델 준비 완료: {model_path}")
+    _print(f"  [OK] 모델 준비 완료: {model_path}")
     _print("=" * 60)
     return model_path
 
 
 def ensure_voice_dependencies():
-    """
-    vosk 와 sounddevice 패키지가 설치돼 있는지 확인하고,
-    없으면 pip으로 자동 설치한다.
-    """
     _REQUIRED = {
         "vosk": "vosk",
         "sounddevice": "sounddevice",
     }
-
     missing = []
     for module_name, pip_name in _REQUIRED.items():
         try:
@@ -148,7 +136,6 @@ def ensure_voice_dependencies():
     _print("=" * 60)
 
     import subprocess
-
     for pkg in missing:
         _print(f"  설치 중: {pkg}")
         result = subprocess.run(
@@ -160,17 +147,33 @@ def ensure_voice_dependencies():
             raise RuntimeError(
                 f"패키지 설치 실패: {pkg}\n{result.stderr.strip()}"
             )
-        _print(f"  ✓ 설치 완료: {pkg}")
-
+        _print(f"  [OK] 설치 완료: {pkg}")
     _print("=" * 60)
 
 
 def get_valid_input_device(sounddevice):
     """
     사용 가능한 마이크 입력 장치 인덱스를 반환한다.
-    라즈베리파이/PC 환경에서 외장 USB 마이크를 최우선으로 탐색하며,
-    어떤 마이크가 선택되었는지 터미널에 안내한다.
+    - Windows(노트북/PC): OS 기본 마이크가 유효하면 None을 반환하여
+      sounddevice가 기본 장치로 안전하게 열리도록 한다.
+    - Linux(라즈베리파이): 외장 USB 마이크를 우선 탐색하고, 없으면 기본/대체 장치로 fallback한다.
     """
+    if sounddevice is None:
+        return None
+
+    # Windows 환경: 기본 입력 장치가 정상이면 None 반환 (OS 기본 마이크 즉시 사용)
+    if sys.platform == "win32":
+        try:
+            default_in = sounddevice.default.device[0]
+            if default_in is not None and default_in >= 0:
+                dev = sounddevice.query_devices(default_in)
+                channels = dev.get("max_input_channels", 0) if isinstance(dev, dict) else getattr(dev, "max_input_channels", 0)
+                if channels > 0:
+                    _print("  [오디오] Windows 기본 마이크를 사용합니다.")
+                    return None
+        except Exception:
+            pass
+
     try:
         devices = sounddevice.query_devices()
     except Exception as exc:
@@ -179,41 +182,61 @@ def get_valid_input_device(sounddevice):
 
     input_devices = []
     for idx, dev in enumerate(devices):
-        if dev.get("max_input_channels", 0) > 0:
+        channels = dev.get("max_input_channels", 0) if isinstance(dev, dict) else getattr(dev, "max_input_channels", 0)
+        if channels > 0:
             input_devices.append((idx, dev))
 
     if not input_devices:
         _print("  [오디오 경고] 사용 가능한 마이크 입력 장치를 찾을 수 없습니다!")
         return None
 
-    # 마이크 목록 로깅
-    _print("  [오디오] 감지된 입력 장치 목록:")
+    # 1순위: 외장 USB 마이크 (라즈베리파이 등에서 꽂은 USB 마이크/웹캠 마이크)
+    usb_keywords = ["usb", "microphone", "mic", "headset"]
     for idx, dev in input_devices:
-        _print(f"    - [{idx}] {dev.get('name', 'Unknown')} (입력 채널: {dev.get('max_input_channels')})")
-
-    # 1순위: 외장 USB 마이크 또는 전용 마이크 키워드가 포함된 장치
-    usb_keywords = ["usb", "mic", "microphone", "headset", "audio", "sound"]
-    for idx, dev in input_devices:
-        name_lower = dev.get("name", "").lower()
-        # 가상 장치나 루프백 제외
-        if any(bad in name_lower for bad in ["dmix", "loopback", "null"]):
+        name = dev.get("name", "") if isinstance(dev, dict) else getattr(dev, "name", "")
+        name_lower = name.lower()
+        if any(bad in name_lower for bad in ["dmix", "loopback", "null", "mapper"]):
             continue
         if any(kw in name_lower for kw in usb_keywords):
-            _print(f"  ✓ [오디오] 외장/우선 마이크 선택됨: [{idx}] {dev.get('name')}")
+            _print(f"  [오디오] 외장/우선 마이크 선택됨: [{idx}]")
             return idx
 
-    # 2순위: 시스템 기본 입력 장치
+    # 2순위: 시스템 기본 입력 장치 fallback
     try:
         default_idx = sounddevice.default.device[0]
         if default_idx is not None and default_idx >= 0:
-            if devices[default_idx]["max_input_channels"] > 0:
-                _print(f"  ✓ [오디오] 기본 입력 장치 선택됨: [{default_idx}] {devices[default_idx].get('name')}")
+            dev = devices[default_idx]
+            channels = dev.get("max_input_channels", 0) if isinstance(dev, dict) else getattr(dev, "max_input_channels", 0)
+            if channels > 0:
+                _print(f"  [오디오] 기본 입력 장치 fallback: [{default_idx}]")
                 return default_idx
     except Exception:
         pass
 
-    # 3순위: 입력 채널이 있는 첫 번째 장치
+    # 3순위: 입력 가능한 첫 번째 장치
     chosen_idx, chosen_dev = input_devices[0]
-    _print(f"  ✓ [오디오] 대체 입력 장치 선택됨: [{chosen_idx}] {chosen_dev.get('name')}")
+    _print(f"  [오디오] 대체 입력 장치 fallback: [{chosen_idx}]")
     return chosen_idx
 
+
+PREFERRED_SAMPLE_RATE = 16000
+BLOCK_SECONDS = 0.1
+
+
+def pick_input_samplerate(sounddevice, preferred=PREFERRED_SAMPLE_RATE):
+    """마이크가 16kHz 입력을 지원하면 16kHz, 아니면 장치 기본값을 쓴다."""
+    try:
+        sounddevice.check_input_settings(
+            samplerate=preferred, channels=1, dtype="int16"
+        )
+        return preferred
+    except Exception:
+        try:
+            device_info = sounddevice.query_devices(kind="input")
+            return int(device_info["default_samplerate"])
+        except Exception:
+            return 16000
+
+
+def block_size_for(samplerate):
+    return max(160, int(samplerate * BLOCK_SECONDS))

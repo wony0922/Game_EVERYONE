@@ -284,10 +284,19 @@ class VoiceRecognizer:
                 input_dev = get_valid_input_device(self._sounddevice)
                 if input_dev is not None:
                     stream_kwargs["device"] = input_dev
-            except Exception:
-                pass
+            def _open_stream(kwargs):
+                return self._sounddevice.RawInputStream(**kwargs)
 
-            with self._sounddevice.RawInputStream(**stream_kwargs):
+            try:
+                stream = _open_stream(stream_kwargs)
+            except Exception as stream_err:
+                if "device" in stream_kwargs:
+                    stream_kwargs.pop("device", None)
+                    stream = _open_stream(stream_kwargs)
+                else:
+                    raise stream_err
+
+            with stream:
                 while not self._stop_event.is_set():
                     if self._reset_requested.is_set():
                         self._reset_requested.clear()

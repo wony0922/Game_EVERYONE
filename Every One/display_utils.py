@@ -1,47 +1,15 @@
 """게임 창을 화면 크기에 맞춰 비율을 유지한 채 확대/축소하는 공통 모듈.
 
-모든 게임은 기존과 같은 1040x600 좌표계로 그리기만 하면 된다.
-pygame.SCALED 가 그 화면을 실제 창 크기에 맞춰 늘리고(비율 유지, 남는 곳은
-검은 여백), 마우스 좌표도 자동으로 게임 좌표로 바꿔 준다.
-창은 크기 조절/최대화가 가능하다.
+모든 게임은 1040x600 좌표계로 그리고,
+pygame.SCALED 가 창 크기(최대화, 드래그 리사이즈)에 맞춰
+비율을 유지하면서 화면 가득 자동으로 확대/축소(Letterbox/Pillarbox)합니다.
 """
 
+import os
 import pygame
 
-# 처음 창을 띄울 때 모니터 크기의 몇 %까지 키울지 (작업 표시줄/제목 표시줄 여유)
-SCREEN_FILL_RATIO = 0.9
-
-_window_size = None  # 사용자가 맞춰 둔 실제 창 크기 (게임 전환 시 유지)
-
-
-def _get_window():
-    """pygame-ce 버전에 따라 현재 창 객체를 얻는다. 없으면 None."""
-    get_window = getattr(pygame.display, "get_window", None)
-    if get_window is not None:
-        try:
-            return get_window()
-        except Exception:
-            pass
-    window_type = getattr(pygame, "Window", None)
-    if window_type is not None and hasattr(window_type, "from_display_module"):
-        try:
-            return window_type.from_display_module()
-        except Exception:
-            pass
-    return None
-
-
-def _fit_size(logical_size):
-    """모니터 크기 안에 들어가는 가장 큰 창 크기를 같은 비율로 계산한다."""
-    try:
-        desktop_w, desktop_h = pygame.display.get_desktop_sizes()[0]
-    except Exception:
-        return None
-    logical_w, logical_h = logical_size
-    max_w = int(desktop_w * SCREEN_FILL_RATIO)
-    max_h = int(desktop_h * SCREEN_FILL_RATIO)
-    scale = min(max_w / logical_w, max_h / logical_h)
-    return max(1, int(logical_w * scale)), max(1, int(logical_h * scale))
+# SDL 스케일링 품질 힌트 (linear: 부드러운 스케일링)
+os.environ.setdefault("SDL_HINT_RENDER_SCALE_QUALITY", "1")
 
 
 def get_display_flags():
@@ -54,8 +22,8 @@ def get_display_flags():
 
 def set_game_display(size, title=None):
     """
-    기존 set_game_display 호환 함수.
-    set_game_mode를 활용해 화면 비율 유지 및 창 크기 자동 조절을 적용한다.
+    게임 해상도(기본 1040x600 등)를 유지하면서
+    사용자가 창을 키우거나 최대화했을 때 내용물이 화면에 맞게 확대되도록 창을 생성합니다.
     """
     screen = set_game_mode(size)
     if title:
@@ -65,36 +33,12 @@ def set_game_display(size, title=None):
 
 def set_game_mode(size):
     """pygame.display.set_mode 대신 사용한다. 반환값은 기존과 같은 화면 Surface."""
-    global _window_size
-
-    window = _get_window() if pygame.display.get_surface() is not None else None
-    if window is not None:
-        try:
-            _window_size = tuple(window.size)
-        except Exception:
-            pass
-
+    flags = get_display_flags()
     try:
-        screen = pygame.display.set_mode(
-            size, pygame.SCALED | pygame.RESIZABLE
-        )
+        screen = pygame.display.set_mode(size, flags)
     except pygame.error as error:
-        # SCALED를 쓸 수 없는 환경이면 기본 방식으로 실행한다.
-        print(f"[display] 창 확대 기능을 사용할 수 없어 기본 창으로 실행합니다: {error}")
-        return pygame.display.set_mode(size)
-
-    target = _window_size or _fit_size(size)
-    window = _get_window()
-    if target is not None and window is not None:
-        try:
-            if tuple(window.size) != tuple(target):
-                window.size = target
-                centered = getattr(pygame, "WINDOWPOS_CENTERED", None)
-                if _window_size is None and centered is not None:
-                    window.position = centered
-            _window_size = tuple(window.size)
-        except Exception as error:
-            print(f"[display] 창 크기를 조절하지 못했습니다: {error}")
+        print(f"[display] SCALED 모드 실패, 기본 모드로 실행합니다: {error}")
+        screen = pygame.display.set_mode(size, pygame.RESIZABLE)
     return screen
 
 
@@ -104,4 +48,5 @@ def handle_fullscreen_toggle(event):
         pygame.display.toggle_fullscreen()
         return True
     return False
+
 

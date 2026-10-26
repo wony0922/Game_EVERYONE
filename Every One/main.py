@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import time
 import pygame
@@ -269,34 +269,24 @@ def main():
             card_title_font = card_title_fonts[font_size]
             card_info_font = card_info_fonts[font_size]
 
-            # 게임 이름 텍스트 (배경 이미지가 있으면 그림자 backdrop)
+            # 게임 이름 텍스트
             game_text = card_title_font.render(game_name, True, title_color)
             gt_x = card.centerx - game_text.get_width() // 2
             gt_y = card.y + int(card_height * 0.2)
             if bg_surf is not None:
-                # 텍스트 가독성을 위한 반투명 backdrop
-                pad_x, pad_y = 10, 4
-                backdrop = pygame.Surface(
-                    (game_text.get_width() + pad_x * 2, game_text.get_height() + pad_y * 2),
-                    pygame.SRCALPHA,
-                )
-                backdrop.fill((0, 0, 0, 110))
-                screen.blit(backdrop, (gt_x - pad_x, gt_y - pad_y))
+                # 텍스트 가독성을 위한 깔끔한 텍스트 그림자 (네모 박스 대신)
+                shadow_text = card_title_font.render(game_name, True, (10, 10, 15))
+                screen.blit(shadow_text, (gt_x + 2, gt_y + 2))
             screen.blit(game_text, (gt_x, gt_y))
 
-            desc_color = (220, 225, 235) if bg_surf is not None else GRAY
+            desc_color = (235, 240, 250) if bg_surf is not None else GRAY
             for line_index, line in enumerate(description.splitlines()):
                 description_text = card_info_font.render(line, True, desc_color)
                 dt_x = card.centerx - description_text.get_width() // 2
                 dt_y = card.y + int(card_height * 0.48) + line_index * 22
                 if bg_surf is not None:
-                    pad_x, pad_y = 6, 2
-                    backdrop = pygame.Surface(
-                        (description_text.get_width() + pad_x * 2, description_text.get_height() + pad_y * 2),
-                        pygame.SRCALPHA,
-                    )
-                    backdrop.fill((0, 0, 0, 100))
-                    screen.blit(backdrop, (dt_x - pad_x, dt_y - pad_y))
+                    desc_shadow = card_info_font.render(line, True, (10, 10, 15))
+                    screen.blit(desc_shadow, (dt_x + 1, dt_y + 1))
                 screen.blit(description_text, (dt_x, dt_y))
 
             if selected:
@@ -304,13 +294,8 @@ def main():
                 st_x = card.centerx - select_text.get_width() // 2
                 st_y = card.bottom - 38
                 if bg_surf is not None:
-                    pad_x, pad_y = 8, 3
-                    backdrop = pygame.Surface(
-                        (select_text.get_width() + pad_x * 2, select_text.get_height() + pad_y * 2),
-                        pygame.SRCALPHA,
-                    )
-                    backdrop.fill((0, 0, 0, 100))
-                    screen.blit(backdrop, (st_x - pad_x, st_y - pad_y))
+                    sel_shadow = small_font.render("ENTER / CLICK / FIST", True, (10, 10, 15))
+                    screen.blit(sel_shadow, (st_x + 1, st_y + 1))
                 screen.blit(
                     select_text,
                     (st_x, st_y),

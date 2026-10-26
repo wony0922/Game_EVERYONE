@@ -402,10 +402,20 @@ class VoiceRecognizer:
                 input_dev = get_valid_input_device(self._sounddevice)
                 if input_dev is not None:
                     stream_kwargs["device"] = input_dev
-            except Exception:
-                pass
+            def _open_stream(kwargs):
+                return self._sounddevice.RawInputStream(**kwargs)
 
-            with self._sounddevice.RawInputStream(**stream_kwargs):
+            try:
+                stream = _open_stream(stream_kwargs)
+            except Exception as stream_err:
+                # 외장 마이크 장치 설정으로 열리지 않으면 device 인자를 제거하고 기본 마이크로 fallback
+                if "device" in stream_kwargs:
+                    stream_kwargs.pop("device", None)
+                    stream = _open_stream(stream_kwargs)
+                else:
+                    raise stream_err
+
+            with stream:
                 while not self._stop_event.is_set():
                     current_num = None
                     generation = None

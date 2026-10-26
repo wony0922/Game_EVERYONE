@@ -194,35 +194,70 @@ def ensure_vosk_model(target_dir=None):
 
 def get_valid_input_device(sd):
     """
-    라즈베리파이 및 PC 환경에서 사용 가능한 마이크 장치(인덱스)를 자동 탐색합니다.
-    라즈베리파이는 기본 입력 장치(Default)가 지정되지 않는 경우가 많으므로
-    실제 마이크 채널(max_input_channels > 0)을 가진 장치를 찾아 반환합니다.
+    사용 가능한 마이크 입력 장치 인덱스를 반환한다.
+    - Windows(노트북/PC): OS 기본 마이크(내장 마이크 포함)가 유효하면 None을 반환하여
+      sounddevice가 기본 장치로 안전하게 열리도록 한다.
+    - Linux(라즈베리파이): 외장 USB 마이크를 우선 탐색하고, 없으면 기본/대체 장치로 fallback한다.
     """
     if sd is None:
         return None
 
-    # 1. 기본 장치가 유효한 입력 장치인지 확인
+    # Windows 환경: 기본 입력 장치가 정상이면 None 반환 (OS 기본 마이크 즉시 사용)
+    if sys.platform == "win32":
+        try:
+            default_in = sd.default.device[0]
+            if default_in is not None and default_in >= 0:
+                dev = sd.query_devices(default_in)
+                channels = dev.get("max_input_channels", 0) if isinstance(dev, dict) else getattr(dev, "max_input_channels", 0)
+                if channels > 0:
+                    print(f"[음성인식] Windows 기본 마이크를 사용합니다: [{default_in}]")
+                    return None
+        except Exception:
+            pass
+
     try:
-        default_in = sd.default.device[0]
-        if default_in is not None and default_in >= 0:
-            dev_info = sd.query_devices(default_in, "input")
-            if dev_info.get("max_input_channels", 0) > 0:
-                return default_in
+        devices = sd.query_devices()
+    except Exception as exc:
+        print(f"[음성인식] 장치 목록 조회 실패: {exc}")
+        return None
+
+    input_devices = []
+    for idx, dev in enumerate(devices):
+        channels = dev.get("max_input_channels", 0) if isinstance(dev, dict) else getattr(dev, "max_input_channels", 0)
+        if channels > 0:
+            input_devices.append((idx, dev))
+
+    if not input_devices:
+        print("[음성인식 경고] 사용 가능한 마이크 입력 장치를 찾을 수 없습니다!")
+        return None
+
+    # 1순위: 외장 USB 마이크 (라즈베리파이 등에서 꽂은 USB 마이크/웹캠 마이크)
+    usb_keywords = ["usb", "microphone", "mic", "headset"]
+    for idx, dev in input_devices:
+        name = dev.get("name", "") if isinstance(dev, dict) else getattr(dev, "name", "")
+        name_lower = name.lower()
+        if any(bad in name_lower for bad in ["dmix", "loopback", "null", "mapper"]):
+            continue
+        if any(kw in name_lower for kw in usb_keywords):
+            print(f"[음성인식] 외장/우선 마이크 선택됨: [{idx}]")
+            return idx
+
+    # 2순위: 시스템 기본 입력 장치 fallback
+    try:
+        default_idx = sd.default.device[0]
+        if default_idx is not None and default_idx >= 0:
+            dev = devices[default_idx]
+            channels = dev.get("max_input_channels", 0) if isinstance(dev, dict) else getattr(dev, "max_input_channels", 0)
+            if channels > 0:
+                print(f"[음성인식] 기본 입력 장치 fallback: [{default_idx}]")
+                return default_idx
     except Exception:
         pass
 
-    # 2. 유효하지 않다면 전체 장치 목록에서 실제 마이크 검색
-    try:
-        devices = sd.query_devices()
-        for idx, dev in enumerate(devices):
-            if dev.get("max_input_channels", 0) > 0:
-                name = dev.get("name", "Unknown")
-                print(f"[음성인식] 마이크 입력 장치 자동 감지: {name} (인덱스 {idx})")
-                return idx
-    except Exception as e:
-        print(f"[음성인식] 오디오 장치 탐색 오류: {e}")
-
-    return None
+    # 3순위: 입력 가능한 첫 번째 장치
+    chosen_idx, chosen_dev = input_devices[0]
+    print(f"[음성인식] 대체 입력 장치 fallback: [{chosen_idx}] {chosen_dev.get('name')}")
+    return chosen_idx
 
 
 # Vosk 한국어 소형 모델은 16kHz로 학습되어 있다. 16kHz로 바로 받으면
