@@ -5,7 +5,8 @@ chocolate-doom 을 별도 프로세스(전체화면)로 실행하고, 손 상태
 
 손동작 조작
   손 좌우       -> 회전 (가운데서 멀수록 빠르게)
-  손 위 / 아래  -> 전진 / 후진 (많이 올리면 달리기)
+  손 위         -> 전진 (많이 올리면 달리기)
+  펴진 손       -> 후진 (Open Palm)
   주먹          -> 발사
   가리키기      -> 문 열기 / 스위치 / 죽은 뒤 다시 시작
   V 1초 유지    -> 종료
@@ -74,7 +75,7 @@ mouse_threshold 0
 """
 
 GUIDE_LINES = [
-    "손 좌우 : 회전        손 위/아래 : 전진/후진",
+    "손 좌우 : 회전        손 위 : 전진  |  펴진 손 : 후진",
     "주먹 : 발사        가리키기 : 문 열기 / 다시 시작",
     "V 손동작 1초 유지 : 메뉴로 돌아가기",
 ]
@@ -116,20 +117,20 @@ class DoomHandMapper(HandMapper):
         else:
             self.turn_remainder = 0.0
 
-        # ── 전진/후진 (손 위아래: 위 = 전진) ──
+        # ── 전진 (손 위: 위 = 전진) ──
         dy = 0.5 - hand_y
         if dy > MOVE_DEADZONE:
             wanted.add("up")
             if dy > RUN_THRESHOLD:
                 wanted.add("shift")
-        elif dy < -MOVE_DEADZONE:
-            wanted.add("down")
 
         # ── 제스처 ──
         if gesture == "Fist":
             wanted.add("ctrl")     # 발사
         elif gesture == "Point":
             wanted.add("space")    # 사용(문 열기)
+        elif gesture in ("Open Palm", "Open_Palm"):
+            wanted.add("down")     # 후진 (손바닥 펴기)
         return wanted
 
 

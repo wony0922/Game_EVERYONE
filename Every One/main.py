@@ -51,6 +51,16 @@ GREEN = (80, 255, 120)
 RED = (255, 80, 80)
 GRAY = (130, 130, 140)
 
+# Special Game 전용 테마 색상 (보라색 계열)
+PURPLE = (185, 105, 255)
+PURPLE_LIGHT = (220, 155, 255)
+PURPLE_BORDER = (195, 110, 255)
+PURPLE_UNSEL = (95, 60, 130)
+PURPLE_BG = (55, 30, 75)
+PURPLE_ACCENT = (255, 120, 220)
+
+SPECIAL_GAMES = {"DOOM", "SUPERTUXKART", "MARIO"}
+
 
 def main():
     pygame.init()
@@ -60,6 +70,8 @@ def main():
     title_font = get_font(70)
     info_font = get_font(30)
     small_font = get_font(24)
+    badge_font = get_font(13)
+    special_tag_font = get_font(18)
     card_title_fonts = {
         "large": get_font(36),
         "small": get_font(25),
@@ -83,6 +95,9 @@ def main():
         "FLY SWATTER":    "card_bg_fly_swatter.png",
         "PATTERN LINE":   "card_bg_pattern_line.png",
         "SKI GAME":       "card_bg_ski_game.png",
+        "DOOM":           "card_bg_doom.png",
+        "SUPERTUXKART":   "card_bg_supertuxkart.png",
+        "MARIO":          "card_bg_mario.png",
     }
     card_bg_surfs = {}
     for game_key, fname in _card_bg_files.items():
@@ -130,7 +145,7 @@ def main():
         ("FLY SWATTER", "손가락으로 모기를\n조준해 잡으세요.", run_fly_swatter),
         ("PATTERN LINE", "숫자 1, 2, 3을\n순서대로 이으세요.", run_pattern_line),
         ("SKI GAME", "S자 코스를 따라\n안전하게 내려오세요.", run_ski_game),
-        ("DOOM", "원조 둠을 손동작으로!\n주먹 발사, V 1초 유지로 종료.", run_doom_classic),
+        ("DOOM", "원조 둠을 손동작으로!\n주먹 발사, 손바닥 펴서 후진.", run_doom_classic),
         ("SUPERTUXKART", "손으로 핸들을 잡고 달리세요!\n주먹 브레이크, 가리키기 아이템.", run_supertuxkart),
         ("MARIO", "손을 기울여 달리고\n주먹을 쥐어 점프하세요!", run_mario),
     ]
@@ -210,10 +225,32 @@ def main():
         # 화면 그리기
         # ----------------------------------
 
+        # 현재 선택 게임이 Special Game 인지 여부
+        is_special_selected = games[selected_game][0] in SPECIAL_GAMES
+
+        # --- 배경 ---
         screen.fill(BACKGROUND_COLOR)
 
+        # Special Game 선택 시: 은은한 보라빛 앰비언트 오버레이
+        if is_special_selected:
+            ambient = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            ambient.fill((80, 0, 130, 28))
+            screen.blit(ambient, (0, 0))
+
+        # 타이틀
         title = title_font.render("Every One", True, WHITE)
         screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 100))
+
+        # Special Game 배너 (타이틀 아래)
+        if is_special_selected:
+            banner_txt = special_tag_font.render("✦  SPECIAL GAMES  ✦", True, PURPLE_LIGHT)
+            bx = WIDTH // 2 - banner_txt.get_width() // 2
+            by = 158
+            # 뒤 글로우
+            glow_surf = pygame.Surface((banner_txt.get_width() + 30, banner_txt.get_height() + 10), pygame.SRCALPHA)
+            glow_surf.fill((160, 60, 255, 45))
+            screen.blit(glow_surf, (bx - 15, by - 4))
+            screen.blit(banner_txt, (bx, by))
 
         screen.set_clip(pygame.Rect(0, 0, WIDTH, HEIGHT))
         carousel_slots = []
@@ -227,6 +264,7 @@ def main():
             visible_slots, key=lambda slot: slot[0], reverse=True
         ):
             selected = index == selected_game
+            is_special = games[index][0] in SPECIAL_GAMES
             scale = 1.0 - min(1.0, abs(offset)) * 0.32
             card_width = int(360 * scale)
             card_height = int(250 * scale)
@@ -237,8 +275,15 @@ def main():
             )
             visible_cards.append((index, card))
 
-            card_color = (42, 62, 86) if selected else (32, 36, 48)
-            border_color = BLUE if selected else (75, 80, 95)
+            # Special Game: 보라 테마 / 일반: 기존 블루 테마
+            if is_special:
+                card_color = PURPLE_BG if selected else (38, 20, 55)
+                border_color = PURPLE_BORDER if selected else PURPLE_UNSEL
+                title_color = PURPLE_LIGHT if selected else (170, 120, 220)
+            else:
+                card_color = (42, 62, 86) if selected else (32, 36, 48)
+                border_color = BLUE if selected else (75, 80, 95)
+                title_color = BLUE if selected else WHITE
 
             game_name, description, _run_game = games[index]
 
@@ -247,15 +292,31 @@ def main():
             if bg_surf is not None:
                 bg_rendered = _get_rounded_bg(bg_surf, card_width, card_height)
                 screen.blit(bg_rendered, card.topleft)
-                # 선택된 카드는 밝게, 비선택은 어둡게 dim overlay
-                dim_alpha = 0 if selected else 80
-                if dim_alpha > 0:
-                    dim = pygame.Surface((card_width, card_height), pygame.SRCALPHA)
-                    dim.fill((0, 0, 0, dim_alpha))
-                    screen.blit(dim, card.topleft)
+                # Special 카드: 보라빛 컬러 틴트 오버레이
+                if is_special:
+                    tint = pygame.Surface((card_width, card_height), pygame.SRCALPHA)
+                    tint.fill((80, 0, 130, 35 if selected else 65))
+                    screen.blit(tint, card.topleft)
+                else:
+                    # 비선택 카드 어둡게
+                    dim_alpha = 0 if selected else 80
+                    if dim_alpha > 0:
+                        dim = pygame.Surface((card_width, card_height), pygame.SRCALPHA)
+                        dim.fill((0, 0, 0, dim_alpha))
+                        screen.blit(dim, card.topleft)
             else:
                 pygame.draw.rect(screen, card_color, card, border_radius=16)
 
+            # Special Game 선택 카드: 바깥 글로우 효과
+            if is_special and selected:
+                for glow_r in (3, 2, 1):
+                    glow_alpha = 30 + (4 - glow_r) * 18
+                    glow_rect = card.inflate(glow_r * 6, glow_r * 6)
+                    glow_s = pygame.Surface((glow_rect.width, glow_rect.height), pygame.SRCALPHA)
+                    pygame.draw.rect(glow_s, (*PURPLE_BORDER, glow_alpha), (0, 0, glow_rect.width, glow_rect.height), border_radius=18)
+                    screen.blit(glow_s, glow_rect.topleft)
+
+            # 카드 테두리
             pygame.draw.rect(
                 screen,
                 border_color,
@@ -264,7 +325,6 @@ def main():
                 border_radius=16,
             )
 
-            title_color = BLUE if selected else WHITE
             font_size = "large" if scale > 0.84 else "small"
             card_title_font = card_title_fonts[font_size]
             card_info_font = card_info_fonts[font_size]
@@ -274,10 +334,18 @@ def main():
             gt_x = card.centerx - game_text.get_width() // 2
             gt_y = card.y + int(card_height * 0.2)
             if bg_surf is not None:
-                # 텍스트 가독성을 위한 깔끔한 텍스트 그림자 (네모 박스 대신)
                 shadow_text = card_title_font.render(game_name, True, (10, 10, 15))
                 screen.blit(shadow_text, (gt_x + 2, gt_y + 2))
             screen.blit(game_text, (gt_x, gt_y))
+
+            # Special 뱃지 (카드 우상단)
+            if is_special and scale > 0.7:
+                badge_txt = badge_font.render("SPECIAL", True, (10, 5, 20))
+                badge_w = badge_txt.get_width() + 10
+                badge_h = badge_txt.get_height() + 4
+                badge_rect = pygame.Rect(card.right - badge_w - 4, card.y + 4, badge_w, badge_h)
+                pygame.draw.rect(screen, PURPLE_BORDER, badge_rect, border_radius=6)
+                screen.blit(badge_txt, (badge_rect.x + 5, badge_rect.y + 2))
 
             desc_color = (235, 240, 250) if bg_surf is not None else GRAY
             for line_index, line in enumerate(description.splitlines()):
@@ -290,16 +358,14 @@ def main():
                 screen.blit(description_text, (dt_x, dt_y))
 
             if selected:
-                select_text = small_font.render("ENTER / CLICK / FIST", True, GREEN)
+                btn_color = PURPLE_ACCENT if is_special else GREEN
+                select_text = small_font.render("ENTER / CLICK / FIST", True, btn_color)
                 st_x = card.centerx - select_text.get_width() // 2
                 st_y = card.bottom - 38
                 if bg_surf is not None:
                     sel_shadow = small_font.render("ENTER / CLICK / FIST", True, (10, 10, 15))
                     screen.blit(sel_shadow, (st_x + 1, st_y + 1))
-                screen.blit(
-                    select_text,
-                    (st_x, st_y),
-                )
+                screen.blit(select_text, (st_x, st_y))
 
         visible_cards.reverse()
         screen.set_clip(None)
@@ -313,7 +379,7 @@ def main():
         info = info_font.render(
             ctrl_label,
             True,
-            GRAY
+            PURPLE_LIGHT if is_special_selected else GRAY
         )
 
         screen.blit(
@@ -359,7 +425,9 @@ def main():
                     last_gesture_nav_time = now
                     launch_selected_game()
 
-            panel_title = small_font.render("WEBCAM", True, BLUE)
+            # 웹캠 패널 제목 및 테두리: Special 선택 시 보라색
+            panel_color = PURPLE if is_special_selected else BLUE
+            panel_title = small_font.render("WEBCAM", True, panel_color)
             screen.blit(
                 panel_title,
                 (
@@ -371,7 +439,7 @@ def main():
             if preview is not None:
                 pygame.draw.rect(
                     screen,
-                    BLUE,
+                    panel_color,
                     (
                         CAMERA_PREVIEW_X - 2,
                         CAMERA_PREVIEW_Y - 2,
@@ -397,7 +465,9 @@ def main():
                 ),
             )
 
-        pygame.draw.line(screen, WHITE, (WIDTH, 0), (WIDTH, HEIGHT), 2)
+        # 구분선: Special 선택 시 보라색
+        line_color = PURPLE_BORDER if is_special_selected else WHITE
+        pygame.draw.line(screen, line_color, (WIDTH, 0), (WIDTH, HEIGHT), 2)
         pygame.display.flip()
         clock.tick(FPS)
 
