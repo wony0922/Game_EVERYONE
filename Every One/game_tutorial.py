@@ -1,5 +1,6 @@
 import pygame
 from font_utils import get_font
+from gesture_icons import draw_tutorial_instruction, load_gesture_icons
 from hand_exit import VictoryExit
 
 
@@ -13,10 +14,11 @@ def show_tutorial(
     width, height = screen.get_size()
     clock = pygame.time.Clock()
 
-    title_font = get_font(40, bold=True)
-    heading_font = get_font(25, bold=True)
-    body_font = get_font(21)
-    prompt_font = get_font(20, bold=True)
+    title_font = get_font(44, bold=True)
+    heading_font = get_font(36, bold=True)
+    body_font = get_font(36)
+    prompt_font = get_font(24, bold=True)
+    gesture_icons = load_gesture_icons()
 
     board = pygame.Rect(32, 28, width - 64, height - 56)
     running = True
@@ -94,21 +96,40 @@ def show_tutorial(
         for heading, instructions in sections:
             heading_surface = heading_font.render(heading, True, (255, 224, 117))
             screen.blit(heading_surface, (board.x + 48, y))
-            y += 35
+            y += 44
             for instruction in instructions:
-                line_surface = body_font.render(instruction, True, (245, 245, 235))
-                screen.blit(line_surface, (board.x + 58, y))
-                y += 31
-            y += 12
+                words = instruction.split()
+                lines = []
+                line = ""
+                for word in words:
+                    candidate = "{} {}".format(line, word).strip()
+                    if line and body_font.size(candidate)[0] > board.width - 120:
+                        lines.append(line)
+                        line = word
+                    else:
+                        line = candidate
+                if line:
+                    lines.append(line)
+                for wrapped_line in lines:
+                    draw_tutorial_instruction(
+                        screen,
+                        body_font,
+                        wrapped_line,
+                        (board.x + 58, y),
+                        (245, 245, 235),
+                        gesture_icons,
+                    )
+                    y += 56
+            y += 10
 
         if transition_until is not None:
             prompt_text = "잠시 후 게임이 시작됩니다..."
         elif now < entry_ready_at:
             prompt_text = "안내를 읽어 주세요. 잠시 후 시작 입력이 활성화됩니다."
         elif require_fist:
-            prompt_text = "주먹(Fist): 게임 시작    |    ESC / V 모양 1초: 메뉴"
+            prompt_text = "[FIST] 시작    |    [V] 메뉴로 나가기"
         else:
-            prompt_text = "SPACE / ENTER / 주먹: 시작    |    ESC / V 모양 1초: 메뉴"
+            prompt_text = "[FIST] 시작    |    [V] 메뉴로 나가기"
         prompt = prompt_font.render(
             prompt_text,
             True,
@@ -118,16 +139,6 @@ def show_tutorial(
             prompt,
             (width // 2 - prompt.get_width() // 2, board.bottom - 48),
         )
-        if hand_controller is not None:
-            exit_hint = prompt_font.render(
-                "ESC / V 모양 1초: 메뉴로 돌아가기",
-                True,
-                (210, 220, 210),
-            )
-            screen.blit(
-                exit_hint,
-                (width // 2 - exit_hint.get_width() // 2, board.bottom - 80),
-            )
         pygame.display.flip()
 
     return True

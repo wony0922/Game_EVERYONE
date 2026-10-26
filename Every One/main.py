@@ -6,7 +6,10 @@ from font_utils import get_font
 from hand_input import scale_hand_x
 from display_utils import set_game_display, handle_fullscreen_toggle
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+CURRENT_DIR_MAIN = os.path.dirname(os.path.abspath(__file__))
+ASSETS_DIR = os.path.join(CURRENT_DIR_MAIN, "assets")
+
+CURRENT_DIR = CURRENT_DIR_MAIN
 PARENT_DIR = os.path.dirname(CURRENT_DIR)
 if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
@@ -56,6 +59,41 @@ def main():
         "large": get_font(19),
         "small": get_font(15),
     }
+
+    # ----------------------------------
+    # 카드 배경 이미지 로드 (전체 게임)
+    # ----------------------------------
+    _card_bg_files = {
+        "PONG":           "card_bg_pong.png",
+        "DOOM WAVE":      "card_bg_doom_wave.png",
+        "1945 AIR COMBAT":"card_bg_1945.png",
+        "STROOP COLOR":   "card_bg_stroop_color.png",
+        "369 GAME":       "card_bg_369.png",
+        "ONE CARD":       "card_bg_one_card.png",
+    }
+    card_bg_surfs = {}
+    for game_key, fname in _card_bg_files.items():
+        path = os.path.join(ASSETS_DIR, fname)
+        if os.path.isfile(path):
+            try:
+                card_bg_surfs[game_key] = pygame.image.load(path).convert_alpha()
+            except Exception as e:
+                print(f"[메인 메뉴] 카드 배경 로드 실패 ({fname}): {e}")
+
+    # 카드 배경 마스크 캐시 (크기별)
+    _bg_mask_cache = {}
+
+    def _get_rounded_bg(surf, width, height, radius=16):
+        """surf를 (width, height)로 축소하고 둥근 모서리 마스킹 후 반환."""
+        scaled = pygame.transform.smoothscale(surf, (width, height))
+        key = (width, height)
+        if key not in _bg_mask_cache:
+            mask = pygame.Surface((width, height), pygame.SRCALPHA)
+            mask.fill((0, 0, 0, 0))
+            pygame.draw.rect(mask, (255, 255, 255, 255), (0, 0, width, height), border_radius=radius)
+            _bg_mask_cache[key] = mask
+        scaled.blit(_bg_mask_cache[key], (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        return scaled
 
     hand_controller = None
     if HandController is not None:
@@ -181,7 +219,23 @@ def main():
 
             card_color = (42, 62, 86) if selected else (32, 36, 48)
             border_color = BLUE if selected else (75, 80, 95)
-            pygame.draw.rect(screen, card_color, card, border_radius=16)
+
+            game_name, description, _run_game = games[index]
+
+            # --- 카드 배경 이미지 (STROOP COLOR 제외) ---
+            bg_surf = card_bg_surfs.get(game_name)
+            if bg_surf is not None:
+                bg_rendered = _get_rounded_bg(bg_surf, card_width, card_height)
+                screen.blit(bg_rendered, card.topleft)
+                # 선택된 카드는 밝게, 비선택은 어둡게 dim overlay
+                dim_alpha = 0 if selected else 80
+                if dim_alpha > 0:
+                    dim = pygame.Surface((card_width, card_height), pygame.SRCALPHA)
+                    dim.fill((0, 0, 0, dim_alpha))
+                    screen.blit(dim, card.topleft)
+            else:
+                pygame.draw.rect(screen, card_color, card, border_radius=16)
+
             pygame.draw.rect(
                 screen,
                 border_color,
@@ -191,34 +245,55 @@ def main():
             )
 
             title_color = BLUE if selected else WHITE
-            game_name, description, _run_game = games[index]
             font_size = "large" if scale > 0.84 else "small"
             card_title_font = card_title_fonts[font_size]
             card_info_font = card_info_fonts[font_size]
-            game_text = card_title_font.render(game_name, True, title_color)
-            screen.blit(
-                game_text,
-                (card.centerx - game_text.get_width() // 2, card.y + int(card_height * 0.2)),
-            )
 
-            for line_index, line in enumerate(description.splitlines()):
-                description_text = card_info_font.render(line, True, GRAY)
-                screen.blit(
-                    description_text,
-                    (
-                        card.centerx - description_text.get_width() // 2,
-                        card.y + int(card_height * 0.48) + line_index * 22,
-                    ),
+            # 게임 이름 텍스트 (배경 이미지가 있으면 그림자 backdrop)
+            game_text = card_title_font.render(game_name, True, title_color)
+            gt_x = card.centerx - game_text.get_width() // 2
+            gt_y = card.y + int(card_height * 0.2)
+            if bg_surf is not None:
+                # 텍스트 가독성을 위한 반투명 backdrop
+                pad_x, pad_y = 10, 4
+                backdrop = pygame.Surface(
+                    (game_text.get_width() + pad_x * 2, game_text.get_height() + pad_y * 2),
+                    pygame.SRCALPHA,
                 )
+                backdrop.fill((0, 0, 0, 110))
+                screen.blit(backdrop, (gt_x - pad_x, gt_y - pad_y))
+            screen.blit(game_text, (gt_x, gt_y))
+
+            desc_color = (220, 225, 235) if bg_surf is not None else GRAY
+            for line_index, line in enumerate(description.splitlines()):
+                description_text = card_info_font.render(line, True, desc_color)
+                dt_x = card.centerx - description_text.get_width() // 2
+                dt_y = card.y + int(card_height * 0.48) + line_index * 22
+                if bg_surf is not None:
+                    pad_x, pad_y = 6, 2
+                    backdrop = pygame.Surface(
+                        (description_text.get_width() + pad_x * 2, description_text.get_height() + pad_y * 2),
+                        pygame.SRCALPHA,
+                    )
+                    backdrop.fill((0, 0, 0, 100))
+                    screen.blit(backdrop, (dt_x - pad_x, dt_y - pad_y))
+                screen.blit(description_text, (dt_x, dt_y))
 
             if selected:
                 select_text = small_font.render("ENTER / CLICK / FIST", True, GREEN)
+                st_x = card.centerx - select_text.get_width() // 2
+                st_y = card.bottom - 38
+                if bg_surf is not None:
+                    pad_x, pad_y = 8, 3
+                    backdrop = pygame.Surface(
+                        (select_text.get_width() + pad_x * 2, select_text.get_height() + pad_y * 2),
+                        pygame.SRCALPHA,
+                    )
+                    backdrop.fill((0, 0, 0, 100))
+                    screen.blit(backdrop, (st_x - pad_x, st_y - pad_y))
                 screen.blit(
                     select_text,
-                    (
-                        card.centerx - select_text.get_width() // 2,
-                        card.bottom - 38,
-                    ),
+                    (st_x, st_y),
                 )
 
         visible_cards.reverse()

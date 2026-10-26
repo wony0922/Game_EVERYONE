@@ -1,5 +1,6 @@
 import pygame
 from font_utils import get_font
+from gesture_icons import draw_tutorial_instruction, load_gesture_icons
 import random
 import os
 import sys
@@ -77,8 +78,9 @@ def run_game(hand_controller=None):
     font_card_num = get_font(24, bold=True)
     font_card_suit = get_font(32, bold=True)
     font_small = get_font(15, bold=True)
-    font_board = get_font(18, bold=True)
-    font_board_title = get_font(26, bold=True)
+    font_board = get_font(32, bold=True)
+    font_board_title = get_font(32, bold=True)
+    gesture_icons = load_gesture_icons()
 
     game_state = "INSTRUCTION_1"
 
@@ -117,10 +119,8 @@ def run_game(hand_controller=None):
         pygame.time.get_ticks() + 1500
     )
     instruction_fist_armed = hand_controller is None
-    instruction_back_armed = True
     ai_think_end_time = 0
     victory_exit = VictoryExit(hold_time_ms=1200)
-    instruction_back_gesture = VictoryExit(hold_time_ms=1200)
 
     # 손동작 0.5초(500ms) 유지 판정 변수 (카드 내기/뽑기 오인식 방지)
     HOLD_ACTION_MS = 500
@@ -225,36 +225,9 @@ def run_game(hand_controller=None):
         if hand_controller is not None:
             is_detected, hand_x, hand_y, gesture = hand_controller.get_state()
             if game_state in ("INSTRUCTION_1", "INSTRUCTION_2"):
-                instruction_back = False
-                if not is_detected or gesture != "Victory":
-                    instruction_back_gesture.update(
-                        False, "None", current_time
-                    )
-                    instruction_back_armed = True
-                elif instruction_back_armed:
-                    instruction_back = instruction_back_gesture.update(
-                        is_detected, gesture, current_time
-                    )
-                else:
-                    instruction_back_gesture.update(
-                        False, "None", current_time
-                    )
-                    instruction_back = False
-                victory_exit.update(False, "None", current_time)
-                if instruction_back:
-                    instruction_back_armed = False
-                    if game_state == "INSTRUCTION_2":
-                        game_state = "INSTRUCTION_1"
-                        instruction_transition_ready_at = current_time + 1500
-                        instruction_fist_armed = False
-                        gesture_locked = True
-                        lock_timer = current_time
-                    else:
-                        running = False
+                if victory_exit.update(is_detected, gesture, current_time):
+                    running = False
             else:
-                instruction_back_gesture.update(
-                    False, "None", current_time
-                )
                 if victory_exit.update(
                     is_detected, gesture, current_time
                 ):
@@ -270,7 +243,6 @@ def run_game(hand_controller=None):
             elif gesture_locked and current_time - lock_timer > 1200:
                 gesture_locked = False
         else:
-            instruction_back_gesture.update(False, "None", current_time)
             victory_exit.update(False, "None", current_time)
 
         # ==========================================
@@ -316,31 +288,24 @@ def run_game(hand_controller=None):
             pygame.draw.line(screen, BLACKBOARD_BORDER, (70, 90), (WIDTH - 70, 90), 2)
 
             rules = [
-                ("🎯 게임 목표 및 기본 룰", GREEN),
-                ("• 내 손에 있는 모든 카드를 먼저 다 내면 승리합니다!", WHITE),
-                ("• 바닥의 카드와 [무늬] 또는 [숫자]가 같은 카드를 낼 수 있습니다.", WHITE),
-                ("", WHITE),
-                ("⚡ 특수 카드 및 공격 규칙", YELLOW),
-                ("• [2] 카드: 공격력 +2 / [A] 카드: 공격력 +3 (중첩 가능)", WHITE),
-                ("  - 공격받았을 때 방어 카드를 못 내면 누적된 카드 더미를 다 가져가야 합니다!", WHITE),
-                ("• [흑백 조커 (+5)] / [컬러 조커 (+7)]: 언제든 내며 강력한 공격!", WHITE),
-                ("• [J, K]: 턴을 건너뛰고 내 턴이 한 번 더 주어집니다.", WHITE),
-                ("• [7]: 원하는 문양(♠, ◆, ♥, ♣)으로 변경할 수 있습니다.", WHITE),
+                ("목표", GREEN),
+                ("손패를 먼저 모두 내기", WHITE),
+                ("같은 무늬 또는 숫자 내기", WHITE),
+                ("특수 카드", YELLOW),
+                ("2·A·조커: 공격  |  J·K: 한 번 더", WHITE),
+                ("7: 원하는 무늬로 변경", WHITE),
             ]
 
             start_y = 105
             for text, color in rules:
-                if text == "":
-                    start_y += 6
-                    continue
                 txt_surf = font_board.render(text, True, color)
                 screen.blit(txt_surf, (65, start_y))
-                start_y += 28
+                start_y += 46
 
             prompt_text = (
                 "잠시 기다려 주세요..."
                 if current_time < instruction_transition_ready_at
-                else "Space / 주먹: 다음 안내    |    ESC / V 모양 1.2초: 메뉴"
+                else "[FIST] 다음 안내    |    [V] 메뉴로 나가기"
             )
             prompt_surf = font_main.render(prompt_text, True, YELLOW)
             if (current_time // 400) % 2 == 0:
@@ -365,7 +330,7 @@ def run_game(hand_controller=None):
         # ==========================================
         # 2. 칠판 안내 2페이지 (조작법 안내)
         # ==========================================
-        # --- 2페이지: 키보드와 손동작 조작 안내 ---
+        # --- 2페이지: 손동작 안내 ---
         if game_state == "INSTRUCTION_2":
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -406,37 +371,33 @@ def run_game(hand_controller=None):
             pygame.draw.rect(screen, BLACKBOARD_BG, board_rect, border_radius=12)
             pygame.draw.rect(screen, BLACKBOARD_BORDER, board_rect, 6, border_radius=12)
 
-            title_surf = font_board_title.render("🖐️ 모션 및 키보드 조작법 안내 (2 / 2) ♠", True, YELLOW)
+            title_surf = font_board_title.render("손동작 안내 (2 / 2)", True, YELLOW)
             screen.blit(title_surf, (WIDTH // 2 - title_surf.get_width() // 2, 45))
             pygame.draw.line(screen, BLACKBOARD_BORDER, (70, 90), (WIDTH - 70, 90), 2)
 
             instructions = [
-                ("🖐️ 모션 인식 조작법 (오류 방지 안내)", GREEN),
-                ("• [Point (가리키기)]: 손을 좌/우로 기울여 카드 선택 (메인메뉴 방식)", WHITE),
-                ("  ※ 중앙에 두면 정지, 좌/우로 기울이면 카드가 한 장씩 이동합니다.", WHITE),
-                ("• [주먹 (Fist) 0.5초 유지]: 선택한 카드 내기 / 메뉴 진행", YELLOW),
-                ("• [승리 V (Victory) 또는 펴진 손 (Palm) 0.5초 유지]: 카드 뽑기", YELLOW),
-                ("  ※ 동작을 0.5초 동안 유지해야 발동하여 오인식을 방지합니다!", GREEN),
-                ("", WHITE),
-                ("⌨️ 키보드 조작법", BLUE),
-                ("• ← / → 방향키: 카드 선택  |  ENTER / SPACE: 카드 내기", WHITE),
-                ("• D 키: 카드 뽑기  |  P 키: 카드 1장 뽑고 턴 넘기기", WHITE),
-                ("• 20초 제한 시간 초과 시 자동으로 카드를 먹고 턴이 넘어갑니다.", WHITE),
+                ("POINT|Point: 카드 선택", WHITE),
+                ("FIST|Fist 0.5초: 카드 내기", YELLOW),
+                ("OPEN_PALM|Open Palm 0.5초: 카드 뽑기", YELLOW),
+                ("V|V 1.2초: 메뉴로 나가기", GREEN),
             ]
 
             start_y = 105
             for text, color in instructions:
-                if text == "":
-                    start_y += 6
-                    continue
-                txt_surf = font_board.render(text, True, color)
-                screen.blit(txt_surf, (65, start_y))
-                start_y += 28
+                draw_tutorial_instruction(
+                    screen,
+                    font_board,
+                    text,
+                    (65, start_y),
+                    color,
+                    gesture_icons,
+                )
+                start_y += 58
 
             prompt_text = (
                 "잠시 기다려 주세요..."
                 if current_time < instruction_transition_ready_at
-                else "Space / 주먹: 게임 시작    |    ESC / V 모양 1.2초: 이전 안내"
+                else "[FIST] 게임 시작    |    [V] 메뉴로 나가기"
             )
             prompt_surf = font_main.render(prompt_text, True, YELLOW)
             if (current_time // 400) % 2 == 0:
@@ -659,7 +620,7 @@ def run_game(hand_controller=None):
                         else:
                             card_nav_held = False
 
-                elif gesture in ("Fist", "Victory", "Open Palm") and not gesture_locked and action_armed:
+                elif gesture in ("Fist", "Open Palm") and not gesture_locked and action_armed:
                     card_nav_held = False
                     if action_hold_gesture == gesture:
                         if current_time - action_hold_start_time >= HOLD_ACTION_MS:
@@ -689,13 +650,6 @@ def run_game(hand_controller=None):
                                     else:
                                         message = "이 카드는 낼 수 없습니다!"
 
-                            elif gesture == "Victory":
-                                draw_count = attack_stack if attack_stack > 0 else 1
-                                draw_cards(player_hand, draw_count, "PLAYER")
-                                message = f"카드를 {draw_count}장 뽑았습니다. AI 차례로 넘어갑니다."
-                                attack_stack = 0
-                                turn = "AI"
-                                ai_think_end_time = current_time + random.randint(3000, 6000)
 
                             elif gesture == "Open Palm":
                                 draw_count = attack_stack if attack_stack > 0 else 1
@@ -872,7 +826,7 @@ def run_game(hand_controller=None):
         screen.blit(deck_label, (WIDTH // 2 - 110 - deck_label.get_width() // 2, HEIGHT // 2 - 25))
 
         # 덱 위에 뽑기 홀드 게이지 표시
-        if action_hold_gesture in ("Victory", "Open Palm") and action_hold_start_time > 0 and turn == "PLAYER":
+        if action_hold_gesture == "Open Palm" and action_hold_start_time > 0 and turn == "PLAYER":
             prog = min(1.0, (current_time - action_hold_start_time) / HOLD_ACTION_MS)
             pygame.draw.rect(screen, (40, 40, 50), (WIDTH // 2 - 160, HEIGHT // 2 - 105, 100, 14), border_radius=7)
             pygame.draw.rect(screen, BLUE, (WIDTH // 2 - 160, HEIGHT // 2 - 105, int(100 * prog), 14), border_radius=7)
@@ -1012,7 +966,7 @@ def run_game(hand_controller=None):
         screen.blit(msg_surf, (35, HEIGHT - 212))
 
         if hand_controller is not None:
-            guide = "Point: 좌/우 기울여 카드 선택 | Fist(0.5초): 내기 | Victory/Palm(0.5초): 뽑기"
+            guide = "Point: 좌/우 기울여 카드 선택 | Fist(0.5초): 내기 | Open Palm(0.5초): 뽑기"
         else:
             guide = "←/→: 카드 선택 | ENTER: 카드 내기 | D: 뽑기 | P: 1장 뽑고 넘기기"
         g_surf = font_small.render(guide, True, GRAY)

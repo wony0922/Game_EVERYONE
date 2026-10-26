@@ -8,6 +8,7 @@ import tempfile
 import threading
 import pygame
 from font_utils import get_font
+from gesture_icons import draw_tutorial_instruction, load_gesture_icons
 from hand_exit import VictoryExit
 from display_utils import set_game_display, handle_fullscreen_toggle
 
@@ -525,6 +526,8 @@ def draw_pixel_cafe_scene(screen):
 def run_tutorial(screen, font_large, font_medium, font_small, hand_controller=None):
     """게임 시작 전 규칙과 조작법을 알려주는 블랙보드 스타일 튜토리얼 화면"""
     clock = pygame.time.Clock()
+    tutorial_font = get_font(32, bold=True)
+    gesture_icons = load_gesture_icons()
     running = True
     entry_ready_at = pygame.time.get_ticks() + 1500
     fist_armed = hand_controller is None
@@ -585,31 +588,33 @@ def run_tutorial(screen, font_large, font_medium, font_small, hand_controller=No
         screen.blit(title_surf, (1040 // 2 - title_surf.get_width() // 2, 70))
 
         rules = [
-            "1. 턴이 돌아올 때마다 차례대로 숫자를 말하거나 입력하세요.",
-            "2. 숫자에 3, 6, 9가 포함되어 있다면 숫자가 아닌 '짝'을 외쳐야 합니다!",
-            "3. 제한 시간(5초) 내에 올바른 대답을 하지 못하면 게임이 종료됩니다.",
-            "",
-            "[조작 방법]",
-            "· 음성 조작: 마이크를 통해 숫자를 발음하거나 '짝'이라고 말하기",
-            "· 키보드 조작: 숫자 입력 후 [Enter], '짝'일 경우 [Space] 한 번"
+            "3·6·9면 '짝'!",
+            "그 외에는 숫자 말하기",
+            "5초 안에 대답하기",
+            "VOICE|Voice: 숫자 또는 '짝' 말하기",
+            "V|V: 메뉴로 나가기",
         ]
 
         y_offset = 150
         for rule in rules:
-            color = (255, 215, 0) if "조작 방법" in rule or "1." in rule or "2." in rule or "3." in rule else WHITE
-            rule_surf = font_medium.render(rule, True, color)
-            screen.blit(rule_surf, (80, y_offset))
-            y_offset += 40
+            color = (255, 215, 0) if "짝" in rule else WHITE
+            draw_tutorial_instruction(
+                screen,
+                tutorial_font,
+                rule,
+                (80, y_offset),
+                color,
+                gesture_icons,
+            )
+            y_offset += 56
 
         if transition_until is not None:
             prompt_text = "잠시 후 게임이 시작됩니다..."
         elif now < entry_ready_at:
-            prompt_text = "안내를 읽어 주세요. 잠시 후 시작 입력이 활성화됩니다."
-        elif hand_controller is not None:
-            prompt_text = "▶ SPACE / 주먹: 시작 | ESC / V 모양 1초: 메뉴"
+            prompt_text = "안내를 읽어 주세요..."
         else:
-            prompt_text = "▶ SPACE / ENTER: 게임 시작 | ESC: 메뉴"
-        prompt_surf = font_medium.render(prompt_text, True, (150, 255, 150))
+            prompt_text = "[FIST] 시작    |    [V] 메뉴로 나가기"
+        prompt_surf = tutorial_font.render(prompt_text, True, (150, 255, 150))
         screen.blit(prompt_surf, (1040 // 2 - prompt_surf.get_width() // 2, 500))
 
         pygame.display.flip()
@@ -858,7 +863,7 @@ def run_game(hand_controller=None):
             screen.blit(msg_txt, (35, 542))
 
             if recognizer is not None:
-                mic_txt = font_small.render("🎤 마이크 듣는 중", True, GREEN)
+                mic_txt = font_small.render("마이크 듣는 중", True, GREEN)
                 screen.blit(mic_txt, (650, 15))
 
             if game_over or game_clear:

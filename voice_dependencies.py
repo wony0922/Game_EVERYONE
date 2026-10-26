@@ -77,6 +77,38 @@ def find_vosk_model(candidate_dirs=None):
     if candidate_dirs:
         if isinstance(candidate_dirs, (list, tuple)):
             search_roots.extend(candidate_dirs)
+def is_valid_vosk_model(model_dir):
+    """모델 폴더 내 대용량 FST 파일이 Git LFS 포인터 텍스트가 아닌 실제 바이너리인지 검사"""
+    if not model_dir or not os.path.isdir(model_dir):
+        return False
+    fst_file = os.path.join(model_dir, "graph", "HCLr.fst")
+    if not os.path.isfile(fst_file):
+        return False
+    try:
+        # 정상 HCLr.fst 파일은 약 180MB. 10MB 미만이거나 헤더가 'vers'면 Git LFS 텍스트 포인터
+        if os.path.getsize(fst_file) < 10 * 1024 * 1024:
+            return False
+        with open(fst_file, "rb") as f:
+            if f.read(4) == b"vers":
+                return False
+    except Exception:
+        return False
+    return True
+
+
+def find_vosk_model(candidate_dirs=None):
+    """환경 변수, 인자, 기본 경로에서 유효한 한국어 Vosk 모델 폴더를 탐색한다."""
+    search_roots = []
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    game_dir = os.path.join(base_dir, "Every One")
+
+    env_path = os.environ.get("VOSK_MODEL_PATH")
+    if env_path:
+        search_roots.append(env_path)
+
+    if candidate_dirs:
+        if isinstance(candidate_dirs, (list, tuple)):
+            search_roots.extend(candidate_dirs)
         else:
             search_roots.append(candidate_dirs)
     search_roots.extend([game_dir, base_dir])
@@ -85,17 +117,17 @@ def find_vosk_model(candidate_dirs=None):
         if not root or not os.path.isdir(root):
             continue
         model_candidate = os.path.join(root, VOSK_MODEL_NAME)
-        if os.path.isdir(model_candidate):
+        if is_valid_vosk_model(model_candidate):
             return os.path.abspath(model_candidate)
         legacy_candidate = os.path.join(root, "model")
-        if os.path.isdir(legacy_candidate):
+        if is_valid_vosk_model(legacy_candidate):
             return os.path.abspath(legacy_candidate)
 
     return None
 
 
 def ensure_vosk_model(target_dir=None):
-    """Vosk 한국어 모델이 없으면 자동으로 다운로드하고 압축을 푼다."""
+    """Vosk 한국어 모델이 없거나 손상되었으면 자동으로 다운로드하고 압축을 푼다."""
     existing_path = find_vosk_model(candidate_dirs=[target_dir] if target_dir else None)
     if existing_path:
         return existing_path
@@ -107,6 +139,15 @@ def ensure_vosk_model(target_dir=None):
 
     dest_model_path = os.path.join(target_dir, VOSK_MODEL_NAME)
     zip_dest_path = os.path.join(target_dir, f"{VOSK_MODEL_NAME}.zip")
+
+    # 기존에 깨진(Git LFS 포인터) 폴더가 있다면 삭제 후 정상 재다운로드
+    if os.path.isdir(dest_model_path) and not is_valid_vosk_model(dest_model_path):
+        print(f"[음성인식] 기존 모델 파일이 손상되었거나 Git LFS 포인터입니다. 재다운로드를 위해 정리합니다...", flush=True)
+        import shutil
+        try:
+            shutil.rmtree(dest_model_path)
+        except Exception:
+            pass
 
     print(
         f"[음성인식] 한국어 Vosk 모델이 없습니다. 자동 다운로드를 시작합니다...\n"

@@ -60,6 +60,8 @@ APT_PACKAGES=(
     libsdl2-2.0-0
     libportaudio2
     fonts-noto-cjk
+    wget
+    unzip
 )
 
 if (( OS_MAJOR >= 13 )); then
@@ -139,6 +141,33 @@ fi
 if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
     printf '그래픽 데스크톱 세션이 감지되지 않았습니다. Raspberry Pi OS 데스크톱에서 실행해 주세요.\n' >&2
     exit 1
+fi
+
+# 한국어 Vosk 음성인식 모델 무결성 검사 (Git LFS 포인터/손상 자동 감지 시 공식 원본 다운로드)
+VOSK_DIR="${ROOT_DIR}/Every One/vosk-model-small-ko-0.22"
+HCLR_FILE="${VOSK_DIR}/graph/HCLr.fst"
+NEED_DOWNLOAD=false
+
+if [[ ! -f "${HCLR_FILE}" ]]; then
+    NEED_DOWNLOAD=true
+else
+    FILE_SIZE=$(wc -c < "${HCLR_FILE}" 2>/dev/null || echo 0)
+    # 정상 HCLr.fst는 약 180MB. 10MB 미만이거나 헤더가 'vers'(Git LFS 포인터)이면 손상
+    if (( FILE_SIZE < 10485760 )); then
+        NEED_DOWNLOAD=true
+    elif head -c 4 "${HCLR_FILE}" 2>/dev/null | grep -q "^vers"; then
+        NEED_DOWNLOAD=true
+    fi
+fi
+
+if [[ "${NEED_DOWNLOAD}" = true ]]; then
+    printf '[음성 모델] 한국어 Vosk 공식 원본 모델을 다운로드합니다 (약 180MB)...\n'
+    rm -rf "${VOSK_DIR}"
+    TMP_ZIP="${ROOT_DIR}/Every One/vosk_model_tmp.zip"
+    wget -q --show-progress -O "${TMP_ZIP}" "https://alphacephei.com/vosk/models/vosk-model-small-ko-0.22.zip"
+    unzip -q -o "${TMP_ZIP}" -d "${ROOT_DIR}/Every One"
+    rm -f "${TMP_ZIP}"
+    printf '[음성 모델] 공식 모델 설치가 완료되었습니다.\n'
 fi
 
 case "${MODE}" in
