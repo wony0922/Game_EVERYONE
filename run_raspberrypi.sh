@@ -51,6 +51,8 @@ esac
 
 APT_PACKAGES=(
     python3-venv
+    python3-dev
+    build-essential
     python3-tk
     libgl1
     libglib2.0-0

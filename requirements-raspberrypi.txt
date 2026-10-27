@@ -4,5 +4,7 @@ opencv-python
 numpy
 pygame-ce==2.5.8
 Pillow
+pytmx
+evdev
 vosk==0.3.45
 sounddevice==0.5.6
